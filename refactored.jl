@@ -33,6 +33,27 @@ function reward end          # (game, s, action, s_next) -> NTuple of rewards fo
 function observe end         # (game, s, i) -> info_set
 function is_terminal end     # (game, s) -> Bool
 
+"""
+A zero-allocation continuous space wrapper.
+Both `low` and `high` must be SVectors of the same dimension and type.
+"""
+struct ContinuousSpace{N, T}
+    low::SVector{N, T}
+    high::SVector{N, T}
+end
+
+function Base.rand(space::ContinuousSpace{N, T}) where {N, T}
+    return space.low .+ rand(SVector{N, T}) .* (space.high .- space.low)
+end
+
+function clip(action::SVector{N, T}, space::ContinuousSpace{N, T}) where {N, T}
+    return clamp.(action, space.low, space.high)
+end
+
+function Base.in(action::SVector, space::ContinuousSpace)
+    return all(action .>= space.low) && all(action .<= space.high)
+end
+
 # ===========================================================================
 # 2. Game Implementations (Concrete Types)
 # ===========================================================================
@@ -267,7 +288,7 @@ The compiler will devirtualize and inline the specific game logic dynamically!
 function simulate_episode(game::AbstractSimultaneousGame, initial_state, agents::Tuple; max_steps=100)
     s = initial_state
     current_agents = agents
-    player_ids = keys(agents) 
+    player_ids = Tuple(keys(agents)) 
     
     cumulative_rewards = map(_ -> 0.0, player_ids) 
     steps = 0
@@ -302,7 +323,7 @@ Only the active player acts and learns. Zero allocations.
 function simulate_episode(game::AbstractSequentialGame, initial_state, agents::Tuple; max_steps=100)
     s = initial_state
     current_agents = agents
-    player_ids = keys(agents) 
+    player_ids = Tuple(keys(agents)) 
     
     cumulative_rewards = map(_ -> 0.0, player_ids) 
     steps = 0
@@ -352,7 +373,7 @@ struct GameRunner{G <: AbstractGame, A <: Tuple}
 end
 
 function run_episodes!(runner::GameRunner, initial_env_state; n_episodes=100, log_every=100)
-    player_ids = keys(runner.initial_agents)
+    player_ids = Tuple(keys(runner.initial_agents))
     total_rewards = map(_ -> 0.0, player_ids)
     
     current_agents = runner.initial_agents
