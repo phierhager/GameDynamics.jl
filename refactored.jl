@@ -316,10 +316,43 @@ function simulate_episode(game::AbstractSimultaneousGame, initial_state, agents:
 end
 
 
-"""
-Simulates an episode for Sequential Games (Turn-Based).
-Only the active player acts and learns. Zero allocations.
-"""
+# ===========================================================================
+# Helper: Type-Stable Recursive Turn Engine
+# ===========================================================================
+
+# Base case: We ran out of agents (catches out-of-bounds errors)
+_play_turn(game, s, p, current_idx, agents::Tuple{}) = error("Player $p out of bounds.")
+
+# Recursive case: Check the first agent, then recurse on the rest
+function _play_turn(game, s, p, current_idx, agents::Tuple)
+    agent = first(agents)
+    rest = Base.tail(agents)
+    
+    if p == current_idx
+        # 1. It is this player's turn. Execute logic.
+        obs = observe(game, s, p)
+        valid_actions = legal_actions(game, s, p)
+        action = act(agent, obs, valid_actions)
+        
+        # 2. Step the environment
+        s_next = transition(game, s, action)
+        step_rewards = reward(game, s, action, s_next)
+        
+        # 3. Learn
+        next_obs = observe(game, s_next, p)
+        updated_agent = learn(agent, obs, action, step_rewards[p], next_obs)
+        
+        # 4. Rebuild the tuple: updated agent + the rest of the unmodified tuple
+        return s_next, step_rewards, (updated_agent, rest...)
+    else
+        # 1. Not this player's turn. Recurse to the next player.
+        s_next, step_rewards, updated_rest = _play_turn(game, s, p, current_idx + 1, rest)
+        
+        # 2. Rebuild the tuple: unmodified current agent + the updated rest
+        return s_next, step_rewards, (agent, updated_rest...)
+    end
+end
+
 function simulate_episode(game::AbstractSequentialGame, initial_state, agents::Tuple; max_steps=100)
     s = initial_state
     current_agents = agents
@@ -330,32 +363,14 @@ function simulate_episode(game::AbstractSequentialGame, initial_state, agents::T
     
     while !is_terminal(game, s) && steps < max_steps
         
-        # 1. Identify whose turn it is
+        # p is a dynamic integer known only at runtime
         p = player_to_move(game, s)
         
-        # 2. Only the active player observes and acts
-        obs = observe(game, s, p)
-        valid_actions = legal_actions(game, s, p)
-        action = act(current_agents[p], obs, valid_actions)
+        # Enter the type-stable function barrier
+        # We pass `1` as the starting index
+        s_next, step_rewards, current_agents = _play_turn(game, s, p, 1, current_agents)
         
-        # 3. Environment transitions based on a SINGLE action
-        s_next = transition(game, s, action)
-        
-        # Reward is still an N-element tuple so everyone can get payoffs 
-        # (e.g., Player 1 acts, resulting in a win for Player 1 and loss for Player 2)
-        step_rewards = reward(game, s, action, s_next)
-        
-        # 4. Active player observes the result and learns
-        next_obs = observe(game, s_next, p)
-        updated_agent = learn(current_agents[p], obs, action, step_rewards[p], next_obs)
-        
-        # 5. THE JULIAN TRICK: Swap the updated agent back into the immutable tuple.
-        # This returns a brand new tuple on the stack. Zero garbage collection!
-        current_agents = Base.setindex(current_agents, updated_agent, p)
-        
-        # Accumulate rewards for everyone
         cumulative_rewards = map(+, cumulative_rewards, step_rewards)
-        
         s = s_next
         steps += 1
     end
