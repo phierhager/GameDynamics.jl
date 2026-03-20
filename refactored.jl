@@ -2,8 +2,21 @@
 # GameRL.jl (Refactored)
 # A Zero-Mutation, Type-Stable POSG Framework via Multiple Dispatch
 # ===========================================================================
+module GameRL
 
 using StaticArrays
+using Base.Threads # Import Julia's threading macros
+using Statistics   # For calculating mean rewards
+
+# ===========================================================================
+# 1. API Exports
+# The user can only access what you explicitly export.
+# ===========================================================================
+export AbstractGame, AbstractSimultaneousGame, AbstractSequentialGame
+export legal_actions, transition, reward, observe, is_terminal, player_to_move
+export ContinuousSpace, clip
+export simulate_episode, run_episodes!, evaluate_parallel
+
 
 struct WaitAction end
 
@@ -88,55 +101,6 @@ transition(g::NormalFormGame, s, a_joint) = s + 1
 reward(g::NormalFormGame, s, a_joint, s_next) = map(mat -> mat[a_joint...], g.payoff_matrices)
 observe(g::NormalFormGame, s, i) = s
 is_terminal(g::NormalFormGame, s) = s >= 1
-
-"""
-Markov Decision Process (1 Player, Stateful)
-"""
-struct MDP{A, T, R, Z} <: AbstractSimultaneousGame
-    actions_fn::A
-    transition_fn::T
-    reward_fn::R
-    terminal_fn::Z
-end
-
-legal_actions(g::MDP, s, i) = g.actions_fn(s)
-transition(g::MDP, s, a_joint) = g.transition_fn(s, a_joint[1])
-reward(g::MDP, s, a_joint, s_next) = (g.reward_fn(s, a_joint[1], s_next),)
-observe(g::MDP, s, i) = s # Perfect Info
-is_terminal(g::MDP, s) = g.terminal_fn(s)
-
-"""
-Markov Game (N Players, Stateful, Simultaneous)
-"""
-struct MarkovGame{A, T, R, Z} <: AbstractSimultaneousGame
-    actions_fn::A
-    transition_fn::T
-    reward_fn::R
-    terminal_fn::Z
-end
-
-legal_actions(g::MarkovGame, s, i) = g.actions_fn(s, i)
-transition(g::MarkovGame, s, a_joint) = g.transition_fn(s, a_joint)
-reward(g::MarkovGame, s, a_joint, s_next) = g.reward_fn(s, a_joint, s_next)
-observe(g::MarkovGame, s, i) = s
-is_terminal(g::MarkovGame, s) = g.terminal_fn(s)
-
-"""
-Partially Observable Markov Decision Process (POMDP)
-"""
-struct POMDP{A, T, R, O, Z} <: AbstractSimultaneousGame
-    actions_fn::A
-    transition_fn::T
-    reward_fn::R
-    observation_fn::O
-    terminal_fn::Z
-end
-
-legal_actions(g::POMDP, s, i) = g.actions_fn(s)
-transition(g::POMDP, s, a_joint) = g.transition_fn(s, a_joint[1])
-reward(g::POMDP, s, a_joint, s_next) = (g.reward_fn(s, a_joint[1], s_next),)
-observe(g::POMDP, s, i) = g.observation_fn(s) # Partial Info via O(s)
-is_terminal(g::POMDP, s) = g.terminal_fn(s)
 
 """
 Population Normal Form Game
@@ -224,28 +188,6 @@ end
 
 observe(g::MeanFieldGame, s, i) = s
 is_terminal(g::MeanFieldGame, s) = false
-
-
-"""
-Extensive Form Game (Sequential Play)
-Parameterized to maintain type stability.
-"""
-struct ExtensiveFormGame{P, A, T, R, I, Z} <: AbstractSequentialGame
-    player_to_move_fn::P
-    legal_actions_fn::A
-    transition_fn::T
-    reward_fn::R
-    info_set_fn::I
-    is_terminal_fn::Z
-end
-
-# Implement the API
-player_to_move(g::ExtensiveFormGame, s) = g.player_to_move_fn(s)
-legal_actions(g::ExtensiveFormGame, s, p) = g.legal_actions_fn(s, p)
-transition(g::ExtensiveFormGame, s, action) = g.transition_fn(s, action)
-reward(g::ExtensiveFormGame, s, action, s_next) = g.reward_fn(s, action, s_next)
-observe(g::ExtensiveFormGame, s, i) = g.info_set_fn(s, i)
-is_terminal(g::ExtensiveFormGame, s) = g.is_terminal_fn(s)
 
 # ===========================================================================
 # 3. The Agent Protocol (Unchanged - Already Excellent)
@@ -461,6 +403,41 @@ function run_episodes!(runner::GameRunner, initial_env_state; n_episodes=100, lo
     
     return total_rewards, current_agents
 end
+
+
+# ===========================================================================
+# Multi-Threaded Evaluation Engine
+# ===========================================================================
+
+"""
+Runs `n_episodes` in parallel across all available CPU cores.
+Perfectly thread-safe because your framework is zero-mutation!
+"""
+function evaluate_parallel(game::AbstractGame, initial_state, frozen_agents::Tuple; n_episodes=1000, max_steps=100)
+    num_players = length(frozen_agents)
+    
+    # We allocate a thread-safe array to hold the total rewards for each episode
+    # Rows = Episodes, Columns = Players
+    results = zeros(Float64, n_episodes, num_players)
+    
+    # The magical Julia threading macro. It distributes the loop across your CPU cores.
+    Threads.@threads for ep in 1:n_episodes
+        # Because `simulate_episode` allocates everything on the stack and never
+        # mutates `frozen_agents`, it is 100% thread-safe out of the box.
+        rewards, steps, _ = simulate_episode(game, initial_state, frozen_agents, max_steps=max_steps)
+        
+        # Store the rewards safely
+        for p in 1:num_players
+            results[ep, p] = rewards[p]
+        end
+    end
+    
+    # Return the average reward per player across all parallel episodes
+    avg_rewards = mean(results, dims=1)
+    return avg_rewards
+end
+
+end # End of module GameRL
 
 
 
