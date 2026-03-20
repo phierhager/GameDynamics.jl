@@ -251,6 +251,9 @@ is_terminal(g::ExtensiveFormGame, s) = g.is_terminal_fn(s)
 # 3. The Agent Protocol (Unchanged - Already Excellent)
 # ===========================================================================
 
+# ===========================================================================
+# Discrete Agents
+# ===========================================================================
 struct QLearningAgent{N}
     q_values::SVector{N, Float64}
     counts::SVector{N, Int}
@@ -258,7 +261,7 @@ struct QLearningAgent{N}
     alpha::Float64
 end
 
-function act(agent::QLearningAgent, obs, valid_actions)
+function act(agent::QLearningAgent, obs, valid_actions::AbstractVector{<:Integer})
     if rand() < agent.epsilon
         return rand(valid_actions)
     else
@@ -266,15 +269,63 @@ function act(agent::QLearningAgent, obs, valid_actions)
     end
 end
 
-function learn(agent::QLearningAgent, obs, action, reward, next_obs)
+function learn(agent::QLearningAgent, obs, action::Integer, reward, next_obs)
     old_q = agent.q_values[action]
     new_q_val = old_q + agent.alpha * (reward - old_q)
     new_count_val = agent.counts[action] + 1
     
-    new_qs = setindex(agent.q_values, new_q_val, action)
-    new_counts = setindex(agent.counts, new_count_val, action)
+    # Using StaticArrays explicitly to ensure type-stable SVector updates
+    new_qs = StaticArrays.setindex(agent.q_values, new_q_val, action)
+    new_counts = StaticArrays.setindex(agent.counts, new_count_val, action)
     
     return QLearningAgent(new_qs, new_counts, agent.epsilon, agent.alpha)
+end
+
+# ===========================================================================
+# Continuous Agents
+# ===========================================================================
+
+"""
+A baseline agent that simply samples valid actions from a ContinuousSpace.
+Zero allocations, completely type-stable.
+"""
+struct ContinuousRandomAgent end
+
+# Notice the signature: It explicitly requires your ContinuousSpace struct!
+function act(agent::ContinuousRandomAgent, obs, valid_actions::ContinuousSpace)
+    return rand(valid_actions)
+end
+
+# It doesn't learn, but it must fulfill the interface and return itself.
+function learn(agent::ContinuousRandomAgent, obs, action::SVector, reward, next_obs)
+    return agent 
+end
+
+
+"""
+A simple Continuous Actor (Linear Gaussian)
+Maps an observation vector to an action vector continuously.
+"""
+struct LinearGaussianAgent{N_obs, N_act}
+    weights::SMatrix{N_act, N_obs, Float64}
+    std_dev::Float64
+end
+
+function act(agent::LinearGaussianAgent{N_obs, N_act}, obs::SVector{N_obs, Float64}, space::ContinuousSpace{N_act, Float64}) where {N_obs, N_act}
+    # Deterministic mean action based on observation
+    mean_action = agent.weights * obs
+    
+    # Add Gaussian noise for exploration (zero allocation using SVector)
+    noise = agent.std_dev .* randn(SVector{N_act, Float64})
+    
+    # Clip the action to the valid continuous space bounds
+    return clip(mean_action .+ noise, space)
+end
+
+function learn(agent::LinearGaussianAgent, obs, action::SVector, reward, next_obs)
+    # Placeholder: In a real scenario, you'd do a policy gradient update here.
+    # For now, we return the unmodified agent.
+    return agent
 end
 
 # ===========================================================================
