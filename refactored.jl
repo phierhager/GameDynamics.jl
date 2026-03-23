@@ -274,34 +274,59 @@ end
 # 4. The Universal Simulation Engine
 # ===========================================================================
 
+@inline _get_obs(game, s, p, ::Tuple{}) = ()
+@inline _get_obs(game, s, p, agents::Tuple) = 
+    (observe(game, s, p), _get_obs(game, s, p + 1, Base.tail(agents))...)
+
+@inline _get_legal_actions(game, s, p, ::Tuple{}) = ()
+@inline _get_legal_actions(game, s, p, agents::Tuple) = 
+    (legal_actions(game, s, p), _get_legal_actions(game, s, p + 1, Base.tail(agents))...)
+
+@inline _get_actions(::Tuple{}, ::Tuple{}, ::Tuple{}) = ()
+@inline _get_actions(agents::Tuple, obs::Tuple, valid::Tuple) =
+    (act(first(agents), first(obs), first(valid)), 
+     _get_actions(Base.tail(agents), Base.tail(obs), Base.tail(valid))...)
+
+@inline _do_learn(::Tuple{}, ::Tuple{}, ::Tuple{}, ::Tuple{}, ::Tuple{}) = ()
+@inline _do_learn(agents::Tuple, obs::Tuple, a_joint::Tuple, step_rewards::Tuple, next_obs::Tuple) =
+    (learn(first(agents), first(obs), first(a_joint), first(step_rewards), first(next_obs)),
+     _do_learn(Base.tail(agents), Base.tail(obs), Base.tail(a_joint), Base.tail(step_rewards), Base.tail(next_obs))...)
+
+@inline _add_rewards(::Tuple{}, ::Tuple{}) = ()
+@inline _add_rewards(r1::Tuple, r2::Tuple) = 
+    (first(r1) + first(r2), _add_rewards(Base.tail(r1), Base.tail(r2))...)
+
 """
-Simulates an episode. Notice we pass `game::AbstractSimultaneousGame`.
-The compiler will devirtualize and inline the specific game logic dynamically!
+Simulates an episode for Simultaneous Games.
+Now purely recursive. Zero closures, zero allocations.
 """
-function simulate_episode(game::AbstractSimultaneousGame, initial_state, agents::Tuple; max_steps=100)
+function simulate_episode(game::AbstractSimultaneousGame, initial_state, agents::NTuple{N, Any}; max_steps=100) where {N}
     s = initial_state
     current_agents = agents
-    player_ids = Tuple(keys(agents)) 
     
-    cumulative_rewards = map(_ -> 0.0, player_ids) 
+    # Pre-allocate zero-rewards
+    cumulative_rewards = ntuple(_ -> 0.0, Val(N)) 
     steps = 0
     
-    # We now call the dispatch functions instead of struct fields
     while !is_terminal(game, s) && steps < max_steps
-        
-        obs = map(i -> observe(game, s, i), player_ids)
-        valid_actions = map(i -> legal_actions(game, s, i), player_ids)
-        
-        a_joint = map(act, current_agents, obs, valid_actions)
-        
-        s_next = transition(game, s, a_joint)
-        step_rewards = reward(game, s, a_joint, s_next)
-        next_obs = map(i -> observe(game, s_next, i), player_ids)
-        
-        current_agents = map(learn, current_agents, obs, a_joint, step_rewards, next_obs)
-        cumulative_rewards = map(+, cumulative_rewards, step_rewards)
-        
-        s = s_next
+        let s_current = s, agents_current = current_agents
+            
+            # Using our allocation-free recursive unrollers
+            obs = _get_obs(game, s_current, 1, agents_current)
+            valid_actions = _get_legal_actions(game, s_current, 1, agents_current)
+            
+            a_joint = _get_actions(agents_current, obs, valid_actions)
+            
+            s_next = transition(game, s_current, a_joint)
+            step_rewards = reward(game, s_current, a_joint, s_next)
+            
+            next_obs = _get_obs(game, s_next, 1, agents_current)
+            
+            current_agents = _do_learn(agents_current, obs, a_joint, step_rewards, next_obs)
+            cumulative_rewards = _add_rewards(cumulative_rewards, step_rewards)
+            
+            s = s_next
+        end
         steps += 1
     end
     
@@ -346,12 +371,12 @@ function _play_turn(game, s, p, current_idx, agents::Tuple)
     end
 end
 
-function simulate_episode(game::AbstractSequentialGame, initial_state, agents::Tuple; max_steps=100)
+function simulate_episode(game::AbstractSequentialGame, initial_state, agents::NTuple{N, Any}; max_steps=100) where {N}
     s = initial_state
     current_agents = agents
     player_ids = Tuple(keys(agents)) 
     
-    cumulative_rewards = map(_ -> 0.0, player_ids) 
+    cumulative_rewards = ntuple(_ -> 0.0, Val(N))
     steps = 0
     
     while !is_terminal(game, s) && steps < max_steps
@@ -438,24 +463,154 @@ function evaluate_parallel(game::AbstractGame, initial_state, frozen_agents::Tup
 end
 
 end # End of module GameRL
+# ===========================================================================
+# PERFORMANCE BENCHMARKING & TEST ENVIRONMENTS
+# (Append this to the bottom of your file, outside the module)
+# ===========================================================================
+
+using .GameRL
+using StaticArrays
+
+# ---------------------------------------------------------------------------
+# 0. A Dummy Agent for Benchmarking
+# (We use a random agent to test framework throughput, rather than algorithmic convergence)
+# ---------------------------------------------------------------------------
+struct BenchAgent end
+GameRL.act(::BenchAgent, obs, valid) = rand(valid)
+GameRL.learn(a::BenchAgent, obs, action, reward, next_obs) = a
 
 
+# ---------------------------------------------------------------------------
+# 1. Stateful MDP: GridWorld (1 Player)
+# ---------------------------------------------------------------------------
+struct GridWorld <: AbstractSimultaneousGame
+    size::Int
+end
 
-println("--- Booting RL Engine ---")
+GameRL.legal_actions(g::GridWorld, s, i) = 1:4 # 1:Left, 2:Right, 3:Up, 4:Down
 
-# FIX: You must use the @SVector macro here so the type matches BanditGame{3}
-bandit = BanditGame(@SVector [0.1, 0.5, 0.9])
+function GameRL.transition(g::GridWorld, s, a_joint)
+    a = a_joint[1]
+    # Convert state to x, y coordinates
+    x, y = (s-1) % g.size + 1, (s-1) ÷ g.size + 1
+    
+    x_new = a == 1 ? max(1, x-1) : (a == 2 ? min(g.size, x+1) : x)
+    y_new = a == 3 ? max(1, y-1) : (a == 4 ? min(g.size, y+1) : y)
+    
+    return (y_new - 1) * g.size + x_new
+end
 
-initial_q = @SVector [0.0, 0.0, 0.0]
-initial_counts = @SVector [0, 0, 0]
-agent = QLearningAgent(initial_q, initial_counts, 0.1, 0.1)
+GameRL.reward(g::GridWorld, s, a_joint, s_next) = s_next == g.size^2 ? (1.0,) : (-0.01,)
+GameRL.observe(g::GridWorld, s, i) = s
+GameRL.is_terminal(g::GridWorld, s) = s == g.size^2
 
-runner = GameRunner(bandit, (agent,))
 
-println("Training for 5000 episodes...")
-initial_state = 0 
-total_rewards, final_agents = run_episodes!(runner, initial_state, n_episodes=5000, log_every=1000)
+# ---------------------------------------------------------------------------
+# 2. Simultaneous Game: Rock-Paper-Scissors (2 Player)
+# ---------------------------------------------------------------------------
+struct RPS <: AbstractSimultaneousGame end
 
-println("\n--- Results ---")
-println("Final Q-Values: ", round.(final_agents[1].q_values, digits=3))
-println("Arm Pull Counts: ", final_agents[1].counts)
+GameRL.legal_actions(g::RPS, s, i) = 1:3 # 1: Rock, 2: Paper, 3: Scissors
+GameRL.transition(g::RPS, s, a_joint) = s + 1 # Advance state by 1 step
+
+function GameRL.reward(g::RPS, s, a_joint, s_next)
+    p1, p2 = a_joint
+    if p1 == p2
+        return (0.0, 0.0)
+    elseif (p1 == 1 && p2 == 3) || (p1 == 2 && p2 == 1) || (p1 == 3 && p2 == 2)
+        return (1.0, -1.0)
+    else
+        return (-1.0, 1.0)
+    end
+end
+
+GameRL.observe(g::RPS, s, i) = s
+GameRL.is_terminal(g::RPS, s) = s >= 1 # Ends after 1 round
+
+
+# ---------------------------------------------------------------------------
+# 3. Sequential Game: Nim / Subtract to Zero (2 Player)
+# State is represented as a Tuple: (current_total, player_to_move)
+# ---------------------------------------------------------------------------
+struct Nim <: AbstractSequentialGame end
+
+GameRL.player_to_move(g::Nim, s) = s[2]
+GameRL.legal_actions(g::Nim, s, p) = 1:min(3, s[1]) # Can subtract 1, 2, or 3
+
+function GameRL.transition(g::Nim, s, action)
+    new_total = s[1] - action
+    next_player = s[2] == 1 ? 2 : 1
+    return (new_total, next_player)
+end
+
+function GameRL.reward(g::Nim, s, action, s_next)
+    if s_next[1] == 0
+        # The player who just moved (s[2]) wins
+        return s[2] == 1 ? (1.0, -1.0) : (-1.0, 1.0)
+    else
+        return (0.0, 0.0)
+    end
+end
+
+GameRL.observe(g::Nim, s, i) = s[1]
+GameRL.is_terminal(g::Nim, s) = s[1] == 0
+
+
+# ===========================================================================
+# BENCHMARK RUNNER
+# ===========================================================================
+
+function run_benchmarks()
+    n_episodes = 100_000
+    
+    println("\n=======================================================")
+    println("🚀 RUNNING PERFORMANCE BENCHMARKS (100,000 Episodes Each)")
+    println("=======================================================")
+    
+    # --- 1. GridWorld ---
+    grid_game = GridWorld(5)
+    agent_tuple_1 = (BenchAgent(),)
+    
+    println("\n1. GridWorld (MDP, 1-Player, Stateful)")
+    # Warmup compilation
+    simulate_episode(grid_game, 1, agent_tuple_1, max_steps=100) 
+    
+    @time begin
+        for _ in 1:n_episodes
+            simulate_episode(grid_game, 1, agent_tuple_1, max_steps=100)
+        end
+    end
+    
+    # --- 2. RPS ---
+    rps_game = RPS()
+    agent_tuple_2 = (BenchAgent(), BenchAgent())
+    
+    println("\n2. Rock-Paper-Scissors (Simultaneous, 2-Player, Matrix)")
+    simulate_episode(rps_game, 0, agent_tuple_2, max_steps=10)
+    
+    @time begin
+        for _ in 1:n_episodes
+            simulate_episode(rps_game, 0, agent_tuple_2, max_steps=10)
+        end
+    end
+    
+    # --- 3. Nim ---
+    nim_game = Nim()
+    agent_tuple_3 = (BenchAgent(), BenchAgent())
+    initial_nim_state = (20, 1) # Start at 20, Player 1's turn
+    
+    println("\n3. Nim (Sequential, 2-Player, Turn-Based)")
+    simulate_episode(nim_game, initial_nim_state, agent_tuple_3, max_steps=100)
+    
+    @time begin
+        for _ in 1:n_episodes
+            simulate_episode(nim_game, initial_nim_state, agent_tuple_3, max_steps=100)
+        end
+    end
+    
+    println("\n=======================================================")
+    println("✅ Benchmarks Complete!")
+end
+
+# Trigger the benchmarks
+run_benchmarks()
