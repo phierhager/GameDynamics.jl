@@ -20,14 +20,14 @@ module Envs
     using StaticArrays
 
     # Import the API functions so we can extend them
-    import ..Core: legal_actions, transition, reward, observe, is_terminal, player_to_move, chance_outcomes
+    import ..Core: legal_actions, transition, reward, observe, is_terminal, player_to_move, chance_outcomes, counterfactual_rewards
 
     include("envs/matrix_games.jl")
     include("envs/gridworlds.jl")
     include("envs/extensive_games.jl")
 
     # Export specific environments
-    export NormalFormGame, MeanFieldGame, PolymatrixGame, GridWorld, Nim
+    export NormalFormGame, MeanFieldGame, PolymatrixGame, GridWorld, Nim, Chicken, PrisonersDilemma
 end
 
 # =========================================================
@@ -42,8 +42,19 @@ module Agents
     include("agents/tabular.jl")
     include("agents/continuous.jl")
     include("agents/population.jl")
+    include("agents/regret.jl")
 
     export QLearningAgent, ContinuousRandomAgent, LinearGaussianAgent, ReplicatorAgent
+    export RegretMatchingAgent, FictitiousPlayAgent, InternalRegretAgent
+end
+
+module Solvers
+    using ..Core
+    using ..Envs
+
+    include("solvers/linear_programming.jl")
+
+    export compute_zero_sum_nash, compute_max_welfare_ce
 end
 
 end 

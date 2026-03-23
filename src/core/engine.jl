@@ -12,10 +12,10 @@
     (act(first(agents), game, first(obs), first(valid)), 
      _get_actions(game, Base.tail(agents), Base.tail(obs), Base.tail(valid))...)
 
-@inline _do_learn(::Any, ::Tuple{}, ::Tuple{}, ::Tuple{}, ::Tuple{}, ::Tuple{}) = ()
+@inline _do_learn(::Any, ::Tuple{}, ::Tuple{}, ::Tuple, ::Tuple{}, ::Tuple{}) = ()
 @inline _do_learn(game, agents::Tuple, obs::Tuple, a_joint::Tuple, step_rewards::Tuple, next_obs::Tuple) =
-    (learn(first(agents), game, first(obs), first(a_joint), first(step_rewards), first(next_obs)),
-     _do_learn(game, Base.tail(agents), Base.tail(obs), Base.tail(a_joint), Base.tail(step_rewards), Base.tail(next_obs))...)
+    (learn(first(agents), game, first(obs), a_joint, first(step_rewards), first(next_obs)),
+     _do_learn(game, Base.tail(agents), Base.tail(obs), a_joint, Base.tail(step_rewards), Base.tail(next_obs))...)
 
 @inline _add_rewards(::Tuple{}, ::Tuple{}) = ()
 @inline _add_rewards(r1::Tuple, r2::Tuple) = 

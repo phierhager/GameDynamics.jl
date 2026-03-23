@@ -20,6 +20,16 @@ transition(g::NormalFormGame, s, a_joint) = s + 1
 reward(g::NormalFormGame, s, a_joint, s_next) = map(mat -> mat[a_joint...], g.payoff_matrices)
 observe(g::NormalFormGame, s, i) = s
 is_terminal(g::NormalFormGame, s) = s >= 1
+function counterfactual_rewards(g::NormalFormGame{N, T}, p::Int, a_joint) where {N, T}
+    num_actions = size(g.payoff_matrices[p], p)
+    
+    # Return an SVector of rewards for every possible action `a`
+    return SVector{num_actions, Float64}(ntuple(num_actions) do a
+        # Swap out player p's action in the joint action tuple
+        hypothetical_joint = ntuple(i -> i == p ? a : a_joint[i], N)
+        return g.payoff_matrices[p][hypothetical_joint...]
+    end)
+end
 
 struct PopulationNormalFormGame{N, S} <: AbstractSimultaneousGame
     payoff_matrices::NTuple{N, S}
@@ -78,3 +88,24 @@ function reward(g::MeanFieldGame{N}, s, a_joint, s_next) where {N}
 end
 observe(g::MeanFieldGame, s, i) = s
 is_terminal(g::MeanFieldGame, s) = false
+
+
+"""
+Chicken (Snowdrift): 
+1 = Swerve (Cooperate), 2 = Straight (Defect)
+"""
+function Chicken()
+    p1 = @SMatrix [4.0 2.0; 6.0 0.0]
+    p2 = @SMatrix [4.0 6.0; 2.0 0.0]
+    return NormalFormGame((p1, p2))
+end
+
+"""
+Prisoner's Dilemma:
+1 = Cooperate, 2 = Defect
+"""
+function PrisonersDilemma()
+    p1 = @SMatrix [-1.0 -3.0; 0.0 -2.0]
+    p2 = @SMatrix [-1.0 0.0; -3.0 -2.0]
+    return NormalFormGame((p1, p2))
+end

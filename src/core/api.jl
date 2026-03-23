@@ -37,6 +37,18 @@ Returns an iterable (Tuple or SVector to prevent allocation) of `(action, probab
 """
 function chance_outcomes end
 
+"""
+    counterfactual_rewards(game, player_id, joint_action)
+
+Returns an iterable of rewards `player_id` WOULD have received for every possible 
+action, assuming opponents' actions remained fixed. 
+
+Currently only supported for finite, simultaneous games.
+"""
+function counterfactual_rewards(game::AbstractGame, p::Int, a_joint)
+    error("counterfactual_rewards is not defined for $(typeof(game)). Regret Matching requires finite, simultaneous games (like NormalFormGame).")
+end
+
 # ---------------------------------------------------------------------------
 # 3. The Context-Aware Agent Protocol
 # ---------------------------------------------------------------------------
