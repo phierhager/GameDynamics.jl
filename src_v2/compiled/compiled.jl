@@ -1,0 +1,13 @@
+module Compiled
+
+export AbstractCompiledModel
+export AbstractCompiledMarkovModel
+export AbstractCompiledNormalFormModel
+export AbstractCompiledExtensiveFormModel
+
+abstract type AbstractCompiledModel end
+abstract type AbstractCompiledMarkovModel <: AbstractCompiledModel end
+abstract type AbstractCompiledNormalFormModel <: AbstractCompiledModel end
+abstract type AbstractCompiledExtensiveFormModel <: AbstractCompiledModel end
+
+end
