@@ -14,7 +14,7 @@ export coarse_correlated_deviation_gains
 export is_correlated_equilibrium
 export is_coarse_correlated_equilibrium
 
-expected_payoff(game::NormalForm.NormalFormGame, profile) =
+expected_payoff_profile(game::NormalForm.NormalFormGame, profile) =
     NormalForm.expected_payoff(game, profile)
 
 function best_response_value(game::NormalForm.NormalFormGame{N},

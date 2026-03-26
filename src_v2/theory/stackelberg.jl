@@ -31,15 +31,19 @@ function follower_best_response(g::StackelbergGame, leader_strategy::Strategies.
     return a, v
 end
 
+@inline _degenerate_mixed(action) = Strategies.FiniteMixedStrategy((action,), (1.0,))
+
 function leader_value(g::StackelbergGame, leader_strategy::Strategies.FiniteMixedStrategy)
     a_f, _ = follower_best_response(g, leader_strategy)
-    base = g.base_game
-    if g.leader == 1
-        prof = (leader_strategy, Strategies.DeterministicStrategy(a_f))
+    follower_strategy = _degenerate_mixed(a_f)
+
+    prof = if g.leader == 1
+        (leader_strategy, follower_strategy)
     else
-        prof = (Strategies.DeterministicStrategy(a_f), leader_strategy)
+        (follower_strategy, leader_strategy)
     end
-    return NormalForm.expected_payoff(base, prof)[g.leader]
+
+    return NormalForm.expected_payoff(g.base_game, prof)[g.leader]
 end
 
 Classification.is_stackelberg_game(::StackelbergGame) = true

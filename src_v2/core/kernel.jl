@@ -20,6 +20,9 @@ export init_state, node_kind, current_player, active_players
 export legal_actions, legal_action_mask, num_base_actions, encode_action, decode_action
 export step, step_with_info, observe, is_terminal
 
+export validate_legal_action_mask, validate_indexed_action_contract
+export default_info
+
 abstract type AbstractGame end
 abstract type AbstractState end
 
@@ -74,6 +77,8 @@ joint_action(actions...) = JointAction(actions)
 Base.getindex(a::JointAction{N}, i::Int) where {N} = a.actions[i]
 Base.length(::JointAction{N}) where {N} = N
 Base.iterate(a::JointAction, st...) = iterate(a.actions, st...)
+Base.Tuple(a::JointAction) = a.actions
+Base.@propagate_inbounds
 
 num_players(::AbstractFixedGame{N}) where {N} = N
 player_ids(::AbstractFixedGame{N}) where {N} = Base.OneTo(N)
@@ -112,6 +117,8 @@ current_player(game::AbstractGame, state)::Int =
 For simultaneous nodes in fixed-player games, prefer:
 - `Base.OneTo(N)` if all players act
 - `NTuple{K,Int}` for strict subsets
+
+Avoid vectors in hot paths.
 """
 active_players(game::AbstractGame, state) =
     error("active_players not implemented for $(typeof(game)), $(typeof(state)).")
@@ -120,7 +127,7 @@ active_players(game::AbstractGame, state) =
 Legal actions contract by mode:
 
 - IndexedActions:
-    returns a compact integer index set, preferably `Base.OneTo(K)`
+    returns a compact integer index set, preferably `Base.OneTo(K)` or an `AbstractUnitRange`
 - ExplicitActions:
     returns an iterable of concrete actions
 - SpaceActions:
@@ -133,7 +140,11 @@ legal_actions(game::AbstractGame, state, player::Int) =
 
 """
 Only meaningful for IndexedActions.
-Length must match `num_base_actions(game, player)`.
+
+Contract:
+- must be an indexable boolean-like collection
+- `length(mask) == num_base_actions(game, player)`
+- `mask[i] == true` iff indexed action `i` is legal
 """
 legal_action_mask(game::AbstractGame, state, player::Int) =
     error("legal_action_mask not implemented for indexed-action game $(typeof(game)).")
@@ -169,13 +180,17 @@ Returns:
 step(game::AbstractGame, state, action, rng::AbstractRNG = Random.default_rng()) =
     error("step not implemented for $(typeof(game)).")
 
+default_info() = NamedTuple()
+
 """
 Optional richer stepping interface.
-Kernel code should prefer `step`.
+
+Recommendation:
+- return a `NamedTuple` for `info` to preserve usability and type stability
 """
 function step_with_info(game::AbstractGame, state, action, rng::AbstractRNG = Random.default_rng())
     next_state, rewards, terminated = step(game, state, action, rng)
-    return next_state, rewards, terminated, nothing
+    return next_state, rewards, terminated, default_info()
 end
 
 """
@@ -192,5 +207,39 @@ observe(game::AbstractGame, state, player::Int) =
     error("observe not implemented for $(typeof(game)).")
 
 is_terminal(game::AbstractGame, state) = node_kind(game, state) == TERMINAL
+
+# ------------------------------------------------------------------
+# Validation helpers for tighter indexed-action contracts
+# ------------------------------------------------------------------
+
+function validate_legal_action_mask(game::AbstractGame, state, player::Int)
+    mask = legal_action_mask(game, state, player)
+    n = num_base_actions(game, player)
+
+    length(mask) == n ||
+        throw(ArgumentError("legal_action_mask length $(length(mask)) does not match num_base_actions=$n for player $player."))
+
+    for i in eachindex(mask)
+        v = mask[i]
+        (v isa Bool || v == 0 || v == 1) ||
+            throw(ArgumentError("legal_action_mask must contain boolean-like values; got element $(repr(v)) at index $i."))
+    end
+
+    return mask
+end
+
+function validate_indexed_action_contract(game::AbstractGame, state, player::Int)
+    action_mode(typeof(game)) === IndexedActions || return nothing
+
+    legal = legal_actions(game, state, player)
+    _ = validate_legal_action_mask(game, state, player)
+
+    for a in legal
+        (a isa Integer && 1 <= a <= num_base_actions(game, player)) ||
+            throw(ArgumentError("IndexedActions legal_actions must return valid integer action indices; got $(repr(a))."))
+    end
+
+    return nothing
+end
 
 end

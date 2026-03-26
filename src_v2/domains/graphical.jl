@@ -28,7 +28,6 @@ function total_payoff(g::LocalPayoffGame{N}, profile::NTuple{N,Int}) where {N}
     return ntuple(i -> local_payoff(g, i, profile), N)
 end
 
-Classification.is_graphical_game(::LocalPayoffGame) = true
 Classification.is_network_game(::LocalPayoffGame) = true
 
 end

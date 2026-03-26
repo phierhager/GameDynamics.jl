@@ -4,7 +4,7 @@ using Random
 using ..Kernel
 using ..Capabilities
 using ..Spec
-using ..Strategies
+import ..Strategies
 using ..Classification
 
 export POSGProfile

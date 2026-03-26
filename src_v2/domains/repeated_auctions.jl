@@ -4,6 +4,8 @@ using ..Domains
 using ..LearningInterfaces
 using ..LearningFeedback
 
+import ..LearningFeedback: chosen_action, realized_utility, observation, utility_vector
+
 export RepeatedFirstPriceAuction
 export AuctionRoundContext
 
@@ -25,7 +27,7 @@ struct RepeatedFirstPriceAuction{T,V<:AbstractVector{T}} <: LearningInterfaces.A
     n_players::Int
 end
 
-function RepeatedFirstPriceAuction(bid_grid::AbstractVector{T}, n_players::Int) where {T}
+function RepeatedFirstPriceAuction(bid_grid::AbstractVector{T}, n_players::Int) where {T<:Real}
     n_players > 0 || throw(ArgumentError("n_players must be positive."))
     isempty(bid_grid) && throw(ArgumentError("bid_grid must be nonempty."))
     return RepeatedFirstPriceAuction{T,typeof(bid_grid)}(bid_grid, n_players)
@@ -35,7 +37,7 @@ struct AuctionRoundContext{T,V<:AbstractVector{T}} <: LearningInterfaces.Abstrac
     values::V
 end
 
-function AuctionRoundContext(values::AbstractVector{T}) where {T}
+function AuctionRoundContext(values::AbstractVector{T}) where {T<:Real}
     isempty(values) && throw(ArgumentError("values must be nonempty."))
     return AuctionRoundContext{T,typeof(values)}(values)
 end
@@ -81,6 +83,12 @@ AuctionBanditFeedback(chosen_action, value, won, payment, realized_utility) =
 AuctionFullInformationFeedback(chosen_action, value, won, payment, realized_utility, utility_vector) =
     AuctionFullInformationFeedback(chosen_action, value, won, payment, realized_utility, utility_vector, LearningFeedback.NoObservation())
 
+@inline function _check_context_lengths(env::RepeatedFirstPriceAuction, ctx::AuctionRoundContext)
+    length(ctx.values) == env.n_players ||
+        throw(ArgumentError("Context value vector length does not match env.n_players."))
+    return nothing
+end
+
 function opponent_threshold(bids::AbstractVector, player::Int)
     1 <= player <= length(bids) || throw(BoundsError(bids, player))
     best = typemin(eltype(bids))
@@ -105,17 +113,36 @@ end
     return best_i
 end
 
-@inline _utility(value, won::Bool, payment) = won ? (value - payment) : zero(payment)
+@inline function _winner_index_tie_first(bids::AbstractVector, player::Int, candidate_bid)
+    1 <= player <= length(bids) || throw(BoundsError(bids, player))
+    best_i = 1
+    best_v = (player == 1 ? candidate_bid : bids[1])
+
+    @inbounds for i in 2:length(bids)
+        v = (i == player ? candidate_bid : bids[i])
+        if v > best_v
+            best_v = v
+            best_i = i
+        end
+    end
+    return best_i
+end
+
+@inline _utility(value, won::Bool, payment) = won ? (value - payment) : zero(value - payment)
 
 function realized_auction_feedback(env::RepeatedFirstPriceAuction,
                                    ctx::AuctionRoundContext,
                                    bids::AbstractVector,
                                    player::Int,
                                    action_idx::Int)
+    _check_context_lengths(env, ctx)
+    length(bids) == env.n_players || throw(ArgumentError("Bid vector length does not match player count."))
+    1 <= player <= env.n_players || throw(BoundsError(1:env.n_players, player))
     1 <= action_idx <= length(env.bid_grid) || throw(BoundsError(env.bid_grid, action_idx))
+
     winner = _winner_index_tie_first(bids)
     won = winner == player
-    payment = won ? bids[player] : zero(eltype(env.bid_grid))
+    payment = won ? bids[player] : zero(eltype(bids))
     value = ctx.values[player]
     u = _utility(value, won, payment)
     return AuctionBanditFeedback(action_idx, value, won, payment, u)
@@ -126,20 +153,23 @@ function full_information_auction_feedback(env::RepeatedFirstPriceAuction,
                                            bids::AbstractVector,
                                            player::Int,
                                            action_idx::Int)
+    _check_context_lengths(env, ctx)
+    length(bids) == env.n_players || throw(ArgumentError("Bid vector length does not match player count."))
+    1 <= player <= env.n_players || throw(BoundsError(1:env.n_players, player))
     1 <= action_idx <= length(env.bid_grid) || throw(BoundsError(env.bid_grid, action_idx))
 
     winner = _winner_index_tie_first(bids)
     won = winner == player
-    payment = won ? bids[player] : zero(eltype(env.bid_grid))
+    payment = won ? bids[player] : zero(eltype(bids))
     value = ctx.values[player]
     realized_u = _utility(value, won, payment)
 
-    thr = opponent_threshold(bids, player)
-    uv = similar(env.bid_grid, promote_type(typeof(value), eltype(env.bid_grid)))
+    T = promote_type(typeof(value), eltype(env.bid_grid))
+    uv = Vector{T}(undef, length(env.bid_grid))
 
     @inbounds for a in eachindex(env.bid_grid)
         bid = env.bid_grid[a]
-        won_cf = bid > thr
+        won_cf = (_winner_index_tie_first(bids, player, bid) == player)
         uv[a] = _utility(value, won_cf, bid)
     end
 
@@ -151,10 +181,11 @@ end
 function run_auction_round!(env::RepeatedFirstPriceAuction,
                             ctx::AuctionRoundContext,
                             action_indices::AbstractVector{<:Integer})
+    _check_context_lengths(env, ctx)
     length(action_indices) == env.n_players ||
         throw(ArgumentError("Action vector length does not match player count."))
 
-    bids = similar(env.bid_grid, env.n_players)
+    bids = Vector{eltype(env.bid_grid)}(undef, env.n_players)
     @inbounds for i in 1:env.n_players
         ai = action_indices[i]
         1 <= ai <= length(env.bid_grid) || throw(BoundsError(env.bid_grid, ai))
@@ -162,12 +193,14 @@ function run_auction_round!(env::RepeatedFirstPriceAuction,
     end
 
     winner = _winner_index_tie_first(bids)
-    payments = similar(bids)
-    utilities = similar(bids)
+
+    T = promote_type(eltype(ctx.values), eltype(env.bid_grid))
+    payments = Vector{T}(undef, env.n_players)
+    utilities = Vector{T}(undef, env.n_players)
 
     @inbounds for i in 1:env.n_players
         won = (i == winner)
-        payments[i] = won ? bids[i] : zero(eltype(bids))
+        payments[i] = won ? bids[i] : zero(T)
         utilities[i] = _utility(ctx.values[i], won, payments[i])
     end
 

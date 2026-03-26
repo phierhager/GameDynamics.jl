@@ -10,6 +10,10 @@ export CompiledExtensiveGame
 export CompiledExtensiveBuilder
 export compile_extensive_game
 export compile_extensive_game_typed
+export compile_extensive_tree
+export compile_extensive_tree_typed
+export compile_extensive_state_graph
+export compile_extensive_state_graph_typed
 export n_nodes, n_infosets, node_action_count
 export NODE_TERMINAL, NODE_CHANCE, NODE_DECISION, NODE_SIMULTANEOUS
 export infoset_player, node_infoset, node_player, active_players
@@ -23,6 +27,7 @@ const NODE_SIMULTANEOUS = UInt8(0x03)
 
 struct CompiledExtensiveGame{NE,IE,AL} <: Compiled.AbstractCompiledExtensiveFormModel
     n_players::Int
+    is_tree::Bool
     has_simultaneous::Bool
 
     n_nodes::Int
@@ -156,7 +161,7 @@ infoset_action_labels(g::CompiledExtensiveGame, infoset::Int) =
 
 @inline _reward_component(r, p::Int) = r isa Real ? (p == 1 ? Float64(r) : 0.0) : Float64(r[p])
 
-@inline function _build_node_encoder(T, root_state)
+@inline function _build_node_encoder(::Type{T}, root_state) where {T}
     enc = Encodings.DenseEncoder{T}()
     Encodings.encode!(enc, root_state)
     return enc
@@ -182,40 +187,30 @@ _materialize(xs) = collect(xs)
 @inline _length_fast(xs::Base.OneTo) = length(xs)
 _length_fast(xs) = length(collect(xs))
 
-@inline function _get_or_add_state!(builder, node_enc, ns, max_nodes::Int)
+@inline function _get_or_add_state_graph_state!(builder, node_enc, ns, max_nodes::Int)
     if Encodings.has_encoding(node_enc, ns)
         return Encodings.encode(node_enc, ns)
     end
     nid = Encodings.encode!(node_enc, ns)
-    length(builder.states) < max_nodes || error("Node budget exceeded in compile_extensive_game.")
+    length(builder.states) < max_nodes || error("Node budget exceeded in compile_extensive_state_graph_typed.")
     push!(builder.states, ns)
     push!(builder.queue, nid)
     return nid
 end
 
-@inline function _push_terminal!(builder, state, N::Int)
-    push!(builder.node_kind, NODE_TERMINAL)
-    push!(builder.node_player, 0)
-    push!(builder.node_infoset, 0)
-    push!(builder.node_first, 1)
-    push!(builder.node_len, 0)
-    push!(builder.node_active_first, 1)
-    push!(builder.node_active_len, 0)
-
-    n_terminals = length(builder.reward_first) + 1
-    push!(builder.reward_first, (n_terminals - 1) * N + 1)
-
-    rewards = Exact.terminal_payoffs(state[1], state[2])
-    @inbounds for p in 1:N
-        push!(builder.terminal_payoff_vec, _reward_component(rewards, p))
-    end
-    return nothing
+@inline function _add_tree_state!(builder, ns, max_nodes::Int)
+    length(builder.states) < max_nodes || error("Node budget exceeded in compile_extensive_tree_typed.")
+    nid = length(builder.states) + 1
+    push!(builder.states, ns)
+    push!(builder.queue, nid)
+    return nid
 end
 
 function _finalize_compiled(builder,
                             node_enc,
                             infoset_enc,
                             N::Int,
+                            is_tree::Bool,
                             saw_simultaneous::Bool,
                             label_type::Type)
     offs = _build_infoset_offsets(builder.infoset_num_actions)
@@ -232,6 +227,7 @@ function _finalize_compiled(builder,
 
     return CompiledExtensiveGame{typeof(node_enc),typeof(infoset_enc),label_type}(
         N,
+        is_tree,
         saw_simultaneous,
         length(builder.states),
         builder.node_kind,
@@ -260,17 +256,34 @@ function _finalize_compiled(builder,
     )
 end
 
-"""
-Typed fast path.
+function _ensure_infoset_action_labels!(builder, infoset_id::Int, acts, ::Type{LT}) where {LT}
+    nA = length(acts)
 
-Use this whenever infosets and action labels can be given concrete types.
-This avoids the `Any` default path and improves compiler inference for the
-compiled extensive-form model.
+    if builder.infoset_num_actions[infoset_id] == 0
+        builder.infoset_num_actions[infoset_id] = nA
+        labs = Vector{LT}(undef, nA)
+        @inbounds for i in 1:nA
+            labs[i] = convert(LT, acts[i])
+        end
+        builder.infoset_labels_tmp[infoset_id] = labs
+    else
+        builder.infoset_num_actions[infoset_id] == nA ||
+            throw(ArgumentError("Infoset action count mismatch for infoset $infoset_id."))
 
-By default, simultaneous nodes are rejected unless `expand_simultaneous=true`.
-That keeps the compiled tree solver-grade by default.
-"""
-function compile_extensive_game_typed(game::Kernel.AbstractGame,
+        labs = builder.infoset_labels_tmp[infoset_id]
+        @inbounds for i in 1:nA
+            ai = convert(LT, acts[i])
+            labs[i] == ai || throw(ArgumentError(
+                "Infoset action label/order mismatch for infoset $infoset_id at local action $i. " *
+                "Expected $(labs[i]), got $ai."
+            ))
+        end
+    end
+
+    return nothing
+end
+
+function compile_extensive_tree_typed(game::Kernel.AbstractGame,
                                       root_state,
                                       ::Type{IT},
                                       ::Type{LT};
@@ -285,7 +298,6 @@ function compile_extensive_game_typed(game::Kernel.AbstractGame,
                                        state_hint = min(state_hint, max_nodes),
                                        edge_hint = edge_hint)
 
-    node_enc = _build_node_encoder(S, root_state)
     infoset_enc = Encodings.DenseEncoder{IT}()
     Encodings.sizehint!(infoset_enc, state_hint)
 
@@ -293,8 +305,8 @@ function compile_extensive_game_typed(game::Kernel.AbstractGame,
     push!(builder.queue, 1)
 
     saw_simultaneous = false
-
     head = 1
+
     while head <= length(builder.queue)
         node_id = builder.queue[head]
         head += 1
@@ -326,7 +338,7 @@ function compile_extensive_game_typed(game::Kernel.AbstractGame,
             @inbounds for k in eachindex(outcomes)
                 event, pr = outcomes[k]
                 ns, _, _ = Kernel.step(game, state, Kernel.ChanceOutcome(event))
-                nsid = _get_or_add_state!(builder, node_enc, ns, max_nodes)
+                nsid = _add_tree_state!(builder, ns, max_nodes)
                 push!(builder.child, nsid)
                 push!(builder.slot_label, convert(LT, event))
                 push!(builder.action_id_within_infoset, 0)
@@ -360,21 +372,12 @@ function compile_extensive_game_typed(game::Kernel.AbstractGame,
             nA = _length_fast(acts)
             a0 = length(builder.child) + 1
 
-            if builder.infoset_num_actions[infoset_id] == 0
-                builder.infoset_num_actions[infoset_id] = nA
-                labs = Vector{LT}(undef, nA)
-                @inbounds for i in 1:nA
-                    labs[i] = convert(LT, acts[i])
-                end
-                builder.infoset_labels_tmp[infoset_id] = labs
-            elseif builder.infoset_num_actions[infoset_id] != nA
-                throw(ArgumentError("Infoset action count mismatch for infoset $infoset_id."))
-            end
+            _ensure_infoset_action_labels!(builder, infoset_id, acts, LT)
 
             @inbounds for local_aid in 1:nA
                 a = acts[local_aid]
                 ns, _, _ = Kernel.step(game, state, a)
-                nsid = _get_or_add_state!(builder, node_enc, ns, max_nodes)
+                nsid = _add_tree_state!(builder, ns, max_nodes)
                 push!(builder.child, nsid)
                 push!(builder.slot_label, convert(LT, a))
                 push!(builder.action_id_within_infoset, local_aid)
@@ -394,7 +397,7 @@ function compile_extensive_game_typed(game::Kernel.AbstractGame,
             saw_simultaneous = true
 
             expand_simultaneous ||
-                throw(ArgumentError("compile_extensive_game_typed encountered a simultaneous node. By default these are rejected because compiled tree solvers currently support decision/chance/terminal trees only. Pass `expand_simultaneous=true` for representation/diagnostic use."))
+                throw(ArgumentError("compile_extensive_tree_typed encountered a simultaneous node. By default these are rejected because compiled tree solvers currently support decision/chance/terminal trees only. Pass `expand_simultaneous=true` for representation/diagnostic use."))
 
             aps = _materialize(Kernel.active_players(game, state))
             af0 = length(builder.active_player_ids) + 1
@@ -407,7 +410,7 @@ function compile_extensive_game_typed(game::Kernel.AbstractGame,
                 jt = Tuple(joint)
                 ja = Kernel.JointAction(jt)
                 ns, _, _ = Kernel.step(game, state, ja)
-                nsid = _get_or_add_state!(builder, node_enc, ns, max_nodes)
+                nsid = _add_tree_state!(builder, ns, max_nodes)
                 push!(builder.child, nsid)
                 push!(builder.slot_label, convert(LT, jt))
                 push!(builder.action_id_within_infoset, 0)
@@ -424,25 +427,166 @@ function compile_extensive_game_typed(game::Kernel.AbstractGame,
             push!(builder.reward_first, 0)
 
         else
-            throw(ArgumentError("Unsupported node kind in compile_extensive_game_typed."))
+            throw(ArgumentError("Unsupported node kind in compile_extensive_tree_typed."))
         end
     end
 
-    return _finalize_compiled(builder, node_enc, infoset_enc, N, saw_simultaneous, LT)
+    return _finalize_compiled(builder, nothing, infoset_enc, N, true, saw_simultaneous, LT)
 end
 
-"""
-Generic convenience path.
+function compile_extensive_state_graph_typed(game::Kernel.AbstractGame,
+                                             root_state,
+                                             ::Type{IT},
+                                             ::Type{LT};
+                                             max_nodes::Int = 1_000_000,
+                                             state_hint::Int = 4096,
+                                             edge_hint::Int = 4096,
+                                             expand_simultaneous::Bool = false) where {IT,LT}
+    N = Kernel.num_players(game)
+    S = typeof(root_state)
 
-This preserves the old API shape, but is intentionally less performance-oriented.
-For performance-sensitive usage, prefer `compile_extensive_game_typed`.
+    builder = CompiledExtensiveBuilder(S, LT;
+                                       state_hint = min(state_hint, max_nodes),
+                                       edge_hint = edge_hint)
 
-Defaults:
-- `expand_simultaneous = false`
-- `infoset_type = Any`
-- `label_type = Any`
-"""
-function compile_extensive_game(game::Kernel.AbstractGame,
+    node_enc = _build_node_encoder(S, root_state)
+    infoset_enc = Encodings.DenseEncoder{IT}()
+    Encodings.sizehint!(infoset_enc, state_hint)
+
+    push!(builder.states, root_state)
+    push!(builder.queue, 1)
+
+    saw_simultaneous = false
+    head = 1
+
+    while head <= length(builder.queue)
+        node_id = builder.queue[head]
+        head += 1
+
+        state = builder.states[node_id]
+        nk = Kernel.node_kind(game, state)
+
+        if nk == Kernel.TERMINAL
+            push!(builder.node_kind, NODE_TERMINAL)
+            push!(builder.node_player, 0)
+            push!(builder.node_infoset, 0)
+            push!(builder.node_first, 1)
+            push!(builder.node_len, 0)
+            push!(builder.node_active_first, 1)
+            push!(builder.node_active_len, 0)
+
+            n_terminals = length(builder.reward_first) + 1
+            push!(builder.reward_first, (n_terminals - 1) * N + 1)
+
+            rewards = Exact.terminal_payoffs(game, state)
+            @inbounds for p in 1:N
+                push!(builder.terminal_payoff_vec, _reward_component(rewards, p))
+            end
+
+        elseif nk == Kernel.CHANCE
+            outcomes = _materialize(Exact.chance_outcomes(game, state))
+            a0 = length(builder.child) + 1
+
+            @inbounds for k in eachindex(outcomes)
+                event, pr = outcomes[k]
+                ns, _, _ = Kernel.step(game, state, Kernel.ChanceOutcome(event))
+                nsid = _get_or_add_state_graph_state!(builder, node_enc, ns, max_nodes)
+                push!(builder.child, nsid)
+                push!(builder.slot_label, convert(LT, event))
+                push!(builder.action_id_within_infoset, 0)
+                push!(builder.chance_prob, Float64(pr))
+            end
+
+            push!(builder.node_kind, NODE_CHANCE)
+            push!(builder.node_player, 0)
+            push!(builder.node_infoset, 0)
+            push!(builder.node_first, a0)
+            push!(builder.node_len, length(outcomes))
+            push!(builder.node_active_first, 1)
+            push!(builder.node_active_len, 0)
+            push!(builder.reward_first, 0)
+
+        elseif nk == Kernel.DECISION
+            p = Kernel.current_player(game, state)
+            info = convert(IT, ExtensiveForm.infoset(game, state, p))
+
+            infoset_id = if Encodings.has_encoding(infoset_enc, info)
+                Encodings.encode(infoset_enc, info)
+            else
+                iid = Encodings.encode!(infoset_enc, info)
+                push!(builder.infoset_player_vec, p)
+                push!(builder.infoset_num_actions, 0)
+                push!(builder.infoset_labels_tmp, LT[])
+                iid
+            end
+
+            acts = _materialize(Kernel.legal_actions(game, state, p))
+            nA = _length_fast(acts)
+            a0 = length(builder.child) + 1
+
+            _ensure_infoset_action_labels!(builder, infoset_id, acts, LT)
+
+            @inbounds for local_aid in 1:nA
+                a = acts[local_aid]
+                ns, _, _ = Kernel.step(game, state, a)
+                nsid = _get_or_add_state_graph_state!(builder, node_enc, ns, max_nodes)
+                push!(builder.child, nsid)
+                push!(builder.slot_label, convert(LT, a))
+                push!(builder.action_id_within_infoset, local_aid)
+                push!(builder.chance_prob, 0.0)
+            end
+
+            push!(builder.node_kind, NODE_DECISION)
+            push!(builder.node_player, p)
+            push!(builder.node_infoset, infoset_id)
+            push!(builder.node_first, a0)
+            push!(builder.node_len, nA)
+            push!(builder.node_active_first, 1)
+            push!(builder.node_active_len, 0)
+            push!(builder.reward_first, 0)
+
+        elseif nk == Kernel.SIMULTANEOUS
+            saw_simultaneous = true
+
+            expand_simultaneous ||
+                throw(ArgumentError("compile_extensive_state_graph_typed encountered a simultaneous node. By default these are rejected because compiled tree solvers currently support decision/chance/terminal trees only. Pass `expand_simultaneous=true` for representation/diagnostic use."))
+
+            aps = _materialize(Kernel.active_players(game, state))
+            af0 = length(builder.active_player_ids) + 1
+            append!(builder.active_player_ids, aps)
+
+            action_lists = map(p -> _materialize(Kernel.legal_actions(game, state, p)), aps)
+            a0 = length(builder.child) + 1
+
+            for joint in Iterators.product(Tuple(action_lists)...)
+                jt = Tuple(joint)
+                ja = Kernel.JointAction(jt)
+                ns, _, _ = Kernel.step(game, state, ja)
+                nsid = _get_or_add_state_graph_state!(builder, node_enc, ns, max_nodes)
+                push!(builder.child, nsid)
+                push!(builder.slot_label, convert(LT, jt))
+                push!(builder.action_id_within_infoset, 0)
+                push!(builder.chance_prob, 0.0)
+            end
+
+            push!(builder.node_kind, NODE_SIMULTANEOUS)
+            push!(builder.node_player, 0)
+            push!(builder.node_infoset, 0)
+            push!(builder.node_first, a0)
+            push!(builder.node_len, length(builder.child) - a0 + 1)
+            push!(builder.node_active_first, af0)
+            push!(builder.node_active_len, length(aps))
+            push!(builder.reward_first, 0)
+
+        else
+            throw(ArgumentError("Unsupported node kind in compile_extensive_state_graph_typed."))
+        end
+    end
+
+    return _finalize_compiled(builder, node_enc, infoset_enc, N, false, saw_simultaneous, LT)
+end
+
+function compile_extensive_tree(game::Kernel.AbstractGame,
                                 root_state;
                                 max_nodes::Int = 1_000_000,
                                 infoset_type::Type = Any,
@@ -450,11 +594,63 @@ function compile_extensive_game(game::Kernel.AbstractGame,
                                 state_hint::Int = 4096,
                                 edge_hint::Int = 4096,
                                 expand_simultaneous::Bool = false)
-    return compile_extensive_game_typed(game, root_state, infoset_type, label_type;
+    return compile_extensive_tree_typed(game, root_state, infoset_type, label_type;
                                         max_nodes = max_nodes,
                                         state_hint = state_hint,
                                         edge_hint = edge_hint,
                                         expand_simultaneous = expand_simultaneous)
 end
+
+function compile_extensive_state_graph(game::Kernel.AbstractGame,
+                                       root_state;
+                                       max_nodes::Int = 1_000_000,
+                                       infoset_type::Type = Any,
+                                       label_type::Type = Any,
+                                       state_hint::Int = 4096,
+                                       edge_hint::Int = 4096,
+                                       expand_simultaneous::Bool = false)
+    return compile_extensive_state_graph_typed(game, root_state, infoset_type, label_type;
+                                               max_nodes = max_nodes,
+                                               state_hint = state_hint,
+                                               edge_hint = edge_hint,
+                                               expand_simultaneous = expand_simultaneous)
+end
+
+"""
+Backward-compatible safe default.
+
+`compile_extensive_game[_typed]` now uses the tree compiler by default.
+State-deduplicating compilation is available explicitly through
+`compile_extensive_state_graph[_typed]`.
+"""
+compile_extensive_game_typed(game::Kernel.AbstractGame,
+                             root_state,
+                             ::Type{IT},
+                             ::Type{LT};
+                             max_nodes::Int = 1_000_000,
+                             state_hint::Int = 4096,
+                             edge_hint::Int = 4096,
+                             expand_simultaneous::Bool = false) where {IT,LT} =
+    compile_extensive_tree_typed(game, root_state, IT, LT;
+                                 max_nodes = max_nodes,
+                                 state_hint = state_hint,
+                                 edge_hint = edge_hint,
+                                 expand_simultaneous = expand_simultaneous)
+
+compile_extensive_game(game::Kernel.AbstractGame,
+                       root_state;
+                       max_nodes::Int = 1_000_000,
+                       infoset_type::Type = Any,
+                       label_type::Type = Any,
+                       state_hint::Int = 4096,
+                       edge_hint::Int = 4096,
+                       expand_simultaneous::Bool = false) =
+    compile_extensive_tree(game, root_state;
+                           max_nodes = max_nodes,
+                           infoset_type = infoset_type,
+                           label_type = label_type,
+                           state_hint = state_hint,
+                           edge_hint = edge_hint,
+                           expand_simultaneous = expand_simultaneous)
 
 end

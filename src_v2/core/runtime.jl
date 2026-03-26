@@ -13,7 +13,7 @@ struct NoLimit <: AbstractEpisodeLimit end
 struct StepLimit <: AbstractEpisodeLimit
     max_steps::Int
     function StepLimit(max_steps::Int)
-        max_steps >= 0 || throw(ArgumentError("max_steps must be nonnegative, got $max_steps."))
+        max_steps > 0 || throw(ArgumentError("max_steps must be positive, got $max_steps."))
         new(max_steps)
     end
 end

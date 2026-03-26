@@ -388,60 +388,63 @@ end
 # Compiled 2-player zero-sum Markov games via Shapley iteration
 # ----------------------------------------------------------------------
 
-mutable struct _StageLPWorkspace
-    stage::Matrix{Float64}
-    x_model::Model
+mutable struct _StageLPModel
+    model::Model
     x::Vector{VariableRef}
     v::VariableRef
     col_constraints::Vector{ConstraintRef}
 end
 
+mutable struct _StageLPWorkspace{O}
+    stage::Matrix{Float64}
+    cache::Dict{Tuple{Int,Int},_StageLPModel}
+    optimizer_factory::O
+end
+
 function _StageLPWorkspace(max_m::Int, max_n::Int, optimizer)
-    stage = zeros(Float64, max_m, max_n)
+    return _StageLPWorkspace(
+        zeros(Float64, max_m, max_n),
+        Dict{Tuple{Int,Int},_StageLPModel}(),
+        optimizer,
+    )
+end
 
-    model = Model(optimizer)
-    set_silent(model)
+function _get_stage_lp!(ws::_StageLPWorkspace, m::Int, n::Int)
+    key = (m, n)
+    return get!(ws.cache, key) do
+        model = Model(ws.optimizer_factory)
+        set_silent(model)
 
-    @variable(model, x[1:max_m] >= 0.0)
-    @variable(model, v)
-    @constraint(model, sum(x) == 1.0)
-    col_constraints = Vector{ConstraintRef}(undef, max_n)
-    for j in 1:max_n
-        col_constraints[j] = @constraint(model, sum(stage[i, j] * x[i] for i in 1:max_m) >= v)
+        @variable(model, x[1:m] >= 0.0)
+        @variable(model, v)
+        @constraint(model, sum(x) == 1.0)
+
+        col_constraints = Vector{ConstraintRef}(undef, n)
+        for j in 1:n
+            col_constraints[j] = @constraint(model, sum(ws.stage[i, j] * x[i] for i in 1:m) >= v)
+        end
+
+        @objective(model, Max, v)
+        _StageLPModel(model, x, v, col_constraints)
     end
-    @objective(model, Max, v)
-
-    return _StageLPWorkspace(stage, model, x, v, col_constraints)
 end
 
 function _solve_stage_value!(ws::_StageLPWorkspace, m::Int, n::Int)
-    model = ws.x_model
+    lpm = _get_stage_lp!(ws, m, n)
 
-    @inbounds for j in 1:length(ws.col_constraints)
-        if j <= n
-            set_normalized_rhs(ws.col_constraints[j], 0.0)
-            set_name(ws.col_constraints[j], "")
+    @inbounds for j in 1:n
+        con = lpm.col_constraints[j]
+        for i in 1:m
+            set_normalized_coefficient(con, lpm.x[i], ws.stage[i, j])
         end
+        set_normalized_coefficient(con, lpm.v, -1.0)
     end
 
-    for j in 1:length(ws.col_constraints)
-        if j <= n
-            con = ws.col_constraints[j]
-            f = JuMP.constraint_object(con).func
-            terms = f.terms
-            empty!(terms)
-            @inbounds for i in 1:m
-                terms[ws.x[i]] = ws.stage[i, j]
-            end
-            terms[ws.v] = -1.0
-        end
-    end
-
-    optimize!(model)
-    termination_status(model) == MOI.OPTIMAL ||
+    optimize!(lpm.model)
+    termination_status(lpm.model) == MOI.OPTIMAL ||
         error("Stage LP failed during compiled Shapley iteration.")
 
-    return objective_value(model)
+    return objective_value(lpm.model)
 end
 
 function shapley_value_iteration_zero_sum(model::CompiledMarkovModels.CompiledZeroSumMarkovGame;
@@ -502,6 +505,17 @@ end
 # Generic 2-player zero-sum discounted Markov games via Shapley iteration
 # ----------------------------------------------------------------------
 
+@inline function _can_use_compiled_zero_sum_path(game::Kernel.AbstractGame, states)
+    Kernel.action_mode(typeof(game)) === Kernel.IndexedActions || return false
+    @inbounds for s in states
+        nk = Kernel.node_kind(game, s)
+        if !(nk == Kernel.SIMULTANEOUS || nk == Kernel.TERMINAL)
+            return false
+        end
+    end
+    return true
+end
+
 """
 Shapley value iteration for finite 2-player zero-sum discounted simultaneous Markov games.
 
@@ -524,8 +538,10 @@ function shapley_value_iteration_zero_sum(game::Kernel.AbstractGame,
     Kernel.num_players(game) == 2 ||
         throw(ArgumentError("shapley_value_iteration_zero_sum requires a 2-player game."))
 
-    if Kernel.action_mode(typeof(game)) === Kernel.IndexedActions
-        model = CompiledMarkovModels.compile_zero_sum_markov_game(game, states)
+    state_vec = collect(states)
+
+    if _can_use_compiled_zero_sum_path(game, state_vec)
+        model = CompiledMarkovModels.compile_zero_sum_markov_game(game, state_vec)
         return shapley_value_iteration_zero_sum(model;
                                                 discount = discount,
                                                 tol = tol,
@@ -533,18 +549,18 @@ function shapley_value_iteration_zero_sum(game::Kernel.AbstractGame,
                                                 optimizer = optimizer)
     end
 
-    idx = _build_state_index(states)
+    idx = _build_state_index(state_vec)
 
-    V = zeros(Float64, length(states))
+    V = zeros(Float64, length(state_vec))
     Vnew = similar(V)
 
-    legal_actions_p1 = Vector{Any}(undef, length(states))
-    legal_actions_p2 = Vector{Any}(undef, length(states))
+    legal_actions_p1 = Vector{Any}(undef, length(state_vec))
+    legal_actions_p2 = Vector{Any}(undef, length(state_vec))
     max_m = 1
     max_n = 1
 
-    @inbounds for sidx in eachindex(states)
-        s = states[sidx]
+    @inbounds for sidx in eachindex(state_vec)
+        s = state_vec[sidx]
         nk = Kernel.node_kind(game, s)
         if nk == Kernel.SIMULTANEOUS
             A1 = _materialize_actions(Kernel.legal_actions(game, s, 1))
@@ -564,8 +580,8 @@ function shapley_value_iteration_zero_sum(game::Kernel.AbstractGame,
     for _ in 1:max_iter
         Δ = 0.0
 
-        @inbounds for sidx in eachindex(states)
-            s = states[sidx]
+        @inbounds for sidx in eachindex(state_vec)
+            s = state_vec[sidx]
             nk = Kernel.node_kind(game, s)
 
             if nk == Kernel.TERMINAL
@@ -573,11 +589,11 @@ function shapley_value_iteration_zero_sum(game::Kernel.AbstractGame,
 
             elseif nk == Kernel.CHANCE
                 acc = 0.0
-                for (event, prob) in Exact.chance_outcomes(game, s)
+                for (event, prob_) in Exact.chance_outcomes(game, s)
                     ns, r, _ = Kernel.step(game, s, Kernel.ChanceOutcome(event))
                     nsidx = _state_index(idx, ns)
                     rr = _scalar_reward(r)
-                    acc += prob * (rr + discount * V[nsidx])
+                    acc += prob_ * (rr + discount * V[nsidx])
                 end
                 Vnew[sidx] = acc
 

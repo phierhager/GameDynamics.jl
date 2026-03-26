@@ -9,7 +9,7 @@ export CompiledMDP
 export CompiledZeroSumMarkovGame
 export compile_mdp
 export compile_zero_sum_markov_game
-export n_states, n_actions
+export n_states, n_actions, action_labels
 
 struct CompiledMDP{SE,S} <: Compiled.AbstractCompiledMarkovModel
     n_states::Int
@@ -19,6 +19,7 @@ struct CompiledMDP{SE,S} <: Compiled.AbstractCompiledMarkovModel
     next_state::Vector{Int}
     prob::Vector{Float64}
     reward::Vector{Float64}
+    action_label::Vector{Int}    # actual IndexedActions labels for each state-action slot
     state_encoder::SE
     states::Vector{S}
 end
@@ -34,14 +35,21 @@ struct CompiledZeroSumMarkovGame{SE,S,A1T,A2T} <: Compiled.AbstractCompiledMarko
     reward::Vector{Float64}      # player-1 reward
     state_encoder::SE
     states::Vector{S}
-    legal_actions_p1::Vector{A1T}
-    legal_actions_p2::Vector{A2T}
+    legal_actions_p1::Vector{A1T}  # actual IndexedActions labels per state
+    legal_actions_p2::Vector{A2T}  # actual IndexedActions labels per state
 end
 
 n_states(m::CompiledMDP) = m.n_states
 n_states(m::CompiledZeroSumMarkovGame) = m.n_states
 n_actions(m::CompiledMDP, s::Int) = m.n_actions[s]
 n_actions(m::CompiledZeroSumMarkovGame, s::Int) = (m.n_actions_p1[s], m.n_actions_p2[s])
+
+function action_labels(m::CompiledMDP, s::Int)
+    a0 = m.action_ptr[s]
+    a1 = m.action_ptr[s + 1] - 1
+    a1 < a0 && return Int[]
+    return @view m.action_label[a0:a1]
+end
 
 @inline _scalar_reward(r) = r isa Real ? Float64(r) : Float64(r[1])
 
@@ -68,6 +76,9 @@ function compile_mdp(game::Kernel.AbstractGame, states)
     Kernel.num_players(game) == 1 ||
         throw(ArgumentError("compile_mdp requires a single-player game."))
 
+    Kernel.action_mode(typeof(game)) === Kernel.IndexedActions ||
+        throw(ArgumentError("compile_mdp requires IndexedActions. Compiled MDP policies return actual indexed action labels, so non-indexed action domains must either be compiled through an explicit action-label encoder or solved through the generic exact path."))
+
     state_vec = collect(states)
     S = eltype(state_vec)
     enc = _build_state_encoder(state_vec)
@@ -80,11 +91,17 @@ function compile_mdp(game::Kernel.AbstractGame, states)
     @inbounds for sidx in 1:nS
         s = state_vec[sidx]
         nk = Kernel.node_kind(game, s)
-        nA = if nk == Kernel.TERMINAL || nk == Kernel.CHANCE
+
+        nA = if nk == Kernel.TERMINAL
             0
+        elseif nk == Kernel.CHANCE
+            throw(ArgumentError("compile_mdp does not support explicit chance states. Fold stochasticity into `Exact.transition_kernel` for decision actions, or use `ExactMarkovSolvers.value_iteration_mdp(game, states)` instead."))
+        elseif nk == Kernel.SIMULTANEOUS
+            throw(ArgumentError("compile_mdp does not support simultaneous states. Use a Markov-game compiler instead."))
         else
             _action_count(Kernel.legal_actions(game, s, 1))
         end
+
         n_actions_vec[sidx] = nA
         action_ptr[sidx] = total_sa + 1
         total_sa += nA
@@ -95,18 +112,21 @@ function compile_mdp(game::Kernel.AbstractGame, states)
     next_state = Int[]
     prob = Float64[]
     reward = Float64[]
+    action_label = Int[]
     sizehint!(next_state, max(total_sa, 16))
     sizehint!(prob, max(total_sa, 16))
     sizehint!(reward, max(total_sa, 16))
+    sizehint!(action_label, max(total_sa, 16))
 
     sa_idx = 1
     @inbounds for sidx in 1:nS
         s = state_vec[sidx]
         nk = Kernel.node_kind(game, s)
-        (nk == Kernel.TERMINAL || nk == Kernel.CHANCE) && continue
+        nk == Kernel.TERMINAL && continue
 
         for a in Kernel.legal_actions(game, s, 1)
             trans_ptr[sa_idx] = length(next_state) + 1
+            push!(action_label, a)
             for entry in Exact.transition_kernel(game, s, a)
                 ns = entry[1]
                 push!(next_state, Encodings.encode(enc, ns))
@@ -126,6 +146,7 @@ function compile_mdp(game::Kernel.AbstractGame, states)
         next_state,
         prob,
         reward,
+        action_label,
         enc,
         state_vec,
     )
@@ -135,49 +156,45 @@ function compile_zero_sum_markov_game(game::Kernel.AbstractGame, states)
     Kernel.num_players(game) == 2 ||
         throw(ArgumentError("compile_zero_sum_markov_game requires a 2-player game."))
 
+    Kernel.action_mode(typeof(game)) === Kernel.IndexedActions ||
+        throw(ArgumentError("compile_zero_sum_markov_game requires IndexedActions."))
+
     state_vec = collect(states)
     S = eltype(state_vec)
     enc = _build_state_encoder(state_vec)
     nS = length(state_vec)
 
-    first_simultaneous = nothing
-    for s in state_vec
-        if Kernel.node_kind(game, s) == Kernel.SIMULTANEOUS
-            first_simultaneous = s
-            break
-        end
-    end
-    first_simultaneous === nothing &&
-        throw(ArgumentError("compile_zero_sum_markov_game requires at least one simultaneous state."))
-
-    A1T = typeof(_materialize_actions(Kernel.legal_actions(game, first_simultaneous, 1)))
-    A2T = typeof(_materialize_actions(Kernel.legal_actions(game, first_simultaneous, 2)))
-
     a1s = zeros(Int, nS)
     a2s = zeros(Int, nS)
     pair_ptr = Vector{Int}(undef, nS + 1)
-    legal_actions_p1 = Vector{A1T}(undef, nS)
-    legal_actions_p2 = Vector{A2T}(undef, nS)
+    legal_actions_p1 = Vector{Vector{Int}}(undef, nS)
+    legal_actions_p2 = Vector{Vector{Int}}(undef, nS)
 
     total_pairs = 0
     @inbounds for sidx in 1:nS
         s = state_vec[sidx]
         nk = Kernel.node_kind(game, s)
+
         if nk == Kernel.SIMULTANEOUS
-            A1 = _materialize_actions(Kernel.legal_actions(game, s, 1))
-            A2 = _materialize_actions(Kernel.legal_actions(game, s, 2))
+            A1 = collect(Kernel.legal_actions(game, s, 1))
+            A2 = collect(Kernel.legal_actions(game, s, 2))
+
             legal_actions_p1[sidx] = A1
             legal_actions_p2[sidx] = A2
-            a1 = _action_count(A1)
-            a2 = _action_count(A2)
+
+            a1 = length(A1)
+            a2 = length(A2)
+
             a1s[sidx] = a1
             a2s[sidx] = a2
             pair_ptr[sidx] = total_pairs + 1
             total_pairs += a1 * a2
-        else
-            legal_actions_p1[sidx] = _materialize_actions(Kernel.legal_actions(game, s, 1))
-            legal_actions_p2[sidx] = _materialize_actions(Kernel.legal_actions(game, s, 2))
+        elseif nk == Kernel.TERMINAL
+            legal_actions_p1[sidx] = Int[]
+            legal_actions_p2[sidx] = Int[]
             pair_ptr[sidx] = total_pairs + 1
+        else
+            throw(ArgumentError("compile_zero_sum_markov_game only supports simultaneous and terminal states. Found $(nk) at state index $sidx. Use `ExactMarkovSolvers.shapley_value_iteration_zero_sum(game, states)` for games with decision or chance states."))
         end
     end
     pair_ptr[end] = total_pairs + 1
@@ -212,7 +229,7 @@ function compile_zero_sum_markov_game(game::Kernel.AbstractGame, states)
     end
     trans_ptr[end] = length(next_state) + 1
 
-    return CompiledZeroSumMarkovGame{typeof(enc),S,A1T,A2T}(
+    return CompiledZeroSumMarkovGame{typeof(enc),S,Vector{Int},Vector{Int}}(
         nS,
         a1s,
         a2s,

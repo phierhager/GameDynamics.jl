@@ -80,6 +80,8 @@ function sample_profile_action(profile::ObservationPolicyProfile,
     end
 end
 
+@inline _reward_component(r, p::Int) = r isa Real ? (p == 1 ? Float64(r) : 0.0) : Float64(r[p])
+
 function rollout_value(game::Kernel.AbstractGame,
                        profile;
                        rng::AbstractRNG = Random.default_rng(),
@@ -87,20 +89,24 @@ function rollout_value(game::Kernel.AbstractGame,
                        discount::Float64 = 1.0)
     state = Kernel.init_state(game, rng)
     N = Kernel.num_players(game)
-    totals = ntuple(_ -> 0.0, N)
+    totals = zeros(Float64, N)
     coeff = 1.0
     steps = 0
 
     while !Kernel.is_terminal(game, state) && steps < max_steps
         action = sample_profile_action(profile, game, state, rng)
         state, rewards, terminated = Kernel.step(game, state, action, rng)
-        totals = ntuple(i -> totals[i] + coeff * rewards[i], N)
+
+        @inbounds for i in 1:N
+            totals[i] += coeff * _reward_component(rewards, i)
+        end
+
         coeff *= discount
         steps += 1
         terminated && break
     end
 
-    return totals
+    return ntuple(i -> totals[i], N)
 end
 
 end

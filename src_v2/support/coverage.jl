@@ -2,8 +2,8 @@ module Coverage
 
 using ..Kernel
 using ..Capabilities
-using ..Classification
 using ..Contracts
+using ..Compiled
 using ..CompiledExtensiveModels
 using ..CompiledMarkovModels
 using ..CompiledNormalFormModels
@@ -23,62 +23,40 @@ export support_report
     STRONG              = 0x04
 end
 
+@inline function _compiled_support_from_contracts(model::Compiled.AbstractCompiledModel)
+    if Contracts.is_diagnostic_only(model)
+        return REPRESENTATION_ONLY
+    elseif Contracts.is_solver_grade(model)
+        if Contracts.supports_exact_solvers(model) && Contracts.supports_approx_solvers(model)
+            return STRONG
+        elseif Contracts.supports_exact_solvers(model) || Contracts.supports_approx_solvers(model)
+            return BASELINE
+        else
+            return REFERENCE
+        end
+    else
+        return REFERENCE
+    end
+end
+
 function representation_support(game::Kernel.AbstractGame)
-    if Classification.is_normal_form(game)
-        return STRONG
-    elseif Classification.is_extensive_form(game)
+    if Contracts.supports_exact_solvers(game) || Contracts.supports_approx_solvers(game)
         return BASELINE
-    elseif Classification.is_stochastic_game(game)
-        return BASELINE
-    elseif Classification.is_posg(game)
+    elseif Contracts.supports_analysis(game)
         return REPRESENTATION_ONLY
     else
-        return REPRESENTATION_ONLY
-    end
-end
-
-function exact_solver_support(game::Kernel.AbstractGame)
-    if Classification.is_normal_form(game)
-        return REFERENCE
-    elseif Classification.is_extensive_form(game)
-        return UNSUPPORTED
-    elseif Classification.is_stochastic_game(game)
-        return REFERENCE
-    else
         return UNSUPPORTED
     end
 end
 
-function approx_solver_support(game::Kernel.AbstractGame)
-    if Classification.is_normal_form(game)
-        return BASELINE
-    elseif Classification.is_extensive_form(game)
-        return BASELINE
-    elseif Classification.is_posg(game)
-        return UNSUPPORTED
-    else
-        return UNSUPPORTED
-    end
-end
+exact_solver_support(game::Kernel.AbstractGame) =
+    Contracts.supports_exact_solvers(game) ? REFERENCE : UNSUPPORTED
 
-compiled_support(model::CompiledNormalFormModels.CompiledMatrixGame) =
-    Contracts.is_solver_grade(model) ? STRONG : REFERENCE
+approx_solver_support(game::Kernel.AbstractGame) =
+    Contracts.supports_approx_solvers(game) ? BASELINE : UNSUPPORTED
 
-compiled_support(model::CompiledMarkovModels.CompiledMDP) =
-    Contracts.is_solver_grade(model) ? STRONG : REFERENCE
-
-compiled_support(model::CompiledMarkovModels.CompiledZeroSumMarkovGame) =
-    Contracts.is_solver_grade(model) ? BASELINE : REFERENCE
-
-function compiled_support(model::CompiledExtensiveModels.CompiledExtensiveGame)
-    if Contracts.is_solver_grade(model)
-        return STRONG
-    elseif Contracts.is_diagnostic_only(model)
-        return REPRESENTATION_ONLY
-    else
-        return REFERENCE
-    end
-end
+compiled_support(model::Compiled.AbstractCompiledModel) =
+    _compiled_support_from_contracts(model)
 
 function support_report(game::Kernel.AbstractGame)
     return (
@@ -95,6 +73,7 @@ function support_report(model::CompiledExtensiveModels.CompiledExtensiveGame)
         supports_analysis = Contracts.supports_analysis(model),
         supports_approx = Contracts.supports_approx_solvers(model),
         supports_exact = Contracts.supports_exact_solvers(model),
+        is_tree = model.is_tree,
         simultaneous = model.has_simultaneous,
     )
 end

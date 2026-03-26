@@ -26,8 +26,12 @@ end
 
 function ensure_workspace!(ws::ExtensiveEvaluationWorkspace,
                            model::CompiledExtensiveModels.CompiledExtensiveGame)
+    model.has_simultaneous &&
+        throw(ArgumentError("ExtensiveFormAnalysis only supports compiled decision/chance/terminal trees. Compiled models with simultaneous nodes are representation-only for now."))
+
     Contracts.supports_analysis(model) ||
         throw(ArgumentError("This compiled extensive-form model does not support analysis."))
+
     length(ws.vals) == model.n_nodes || resize!(ws.vals, model.n_nodes)
     empty!(ws.node_stack)
     empty!(ws.expanded_stack)

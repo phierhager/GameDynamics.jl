@@ -4,7 +4,7 @@ using ..Kernel
 
 export HorizonKind, EPISODIC, CONTINUING
 export PlayerModelKind, FIXED_PLAYERS, POPULATION_PLAYERS
-
+export PayoffKind, ZERO_SUM, GENERAL_SUM, CONSTANT_SUM, UNKNOWN_PAYOFF
 export TeamSpec, CoalitionSpec, MechanismSpec, GameSpec
 export game_spec
 
@@ -16,6 +16,13 @@ end
 @enum PlayerModelKind::UInt8 begin
     FIXED_PLAYERS = 0x01
     POPULATION_PLAYERS = 0x02
+end
+
+@enum PayoffKind::UInt8 begin
+    ZERO_SUM = 0x01
+    GENERAL_SUM = 0x02
+    CONSTANT_SUM = 0x03
+    UNKNOWN_PAYOFF = 0x04
 end
 
 struct TeamSpec
@@ -36,26 +43,18 @@ Base.@kwdef struct MechanismSpec
     transfers::Bool = false
 end
 
-"""
-Descriptive metadata only.
-
-These fields do not alter the kernel stepping contract.
-`max_steps` may be consulted by runtime helpers such as `Runtime.default_episode_limit`,
-but kernel `step` itself does not implement truncation.
-"""
 Base.@kwdef struct GameSpec
-    perfect_information::Bool = true
-    perfect_recall::Bool = true
-    stochastic::Bool = false
-    simultaneous_moves::Bool = false
-    zero_sum::Bool = false
-    general_sum::Bool = false
+    perfect_information::Union{Nothing,Bool} = nothing
+    perfect_recall::Union{Nothing,Bool} = nothing
+    stochastic::Union{Nothing,Bool} = nothing
+    simultaneous_moves::Union{Nothing,Bool} = nothing
 
+    payoff_kind::PayoffKind = UNKNOWN_PAYOFF
     horizon_kind::HorizonKind = EPISODIC
     player_model::PlayerModelKind = FIXED_PLAYERS
 
-    max_steps::Union{Nothing, Int} = nothing
-    default_discount::Union{Nothing, Float64} = nothing
+    max_steps::Union{Nothing,Int} = nothing
+    default_discount::Union{Nothing,Float64} = nothing
 
     mechanism::MechanismSpec = MechanismSpec()
     teams::Vector{TeamSpec} = TeamSpec[]

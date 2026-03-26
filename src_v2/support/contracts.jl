@@ -4,6 +4,9 @@ using ..Compiled
 using ..CompiledNormalFormModels
 using ..CompiledMarkovModels
 using ..CompiledExtensiveModels
+using ..Kernel
+using ..Capabilities
+using ..Classification
 
 export ModelRole
 export DIAGNOSTIC_ONLY, REFERENCE_GRADE, SOLVER_GRADE
@@ -37,6 +40,34 @@ supports_exact_solvers(::Compiled.AbstractCompiledModel) = false
 supports_approx_solvers(::Compiled.AbstractCompiledModel) = false
 
 # ----------------------------------------------------------------------
+# Game-level capability contracts
+# Coverage should ask these, rather than re-deriving from broad theory labels.
+# ----------------------------------------------------------------------
+
+supports_analysis(::Kernel.AbstractGame) = true
+
+function supports_exact_solvers(game::Kernel.AbstractGame)
+    if Classification.is_normal_form(game)
+        return true
+    end
+
+    return (Capabilities.has_transition_kernel(typeof(game)) === Val(true)) &&
+           !(Capabilities.has_information_state(typeof(game)) === Val(true))
+end
+
+function supports_approx_solvers(game::Kernel.AbstractGame)
+    if Classification.is_normal_form(game)
+        return true
+    end
+
+    if Classification.is_extensive_form(game)
+        return Capabilities.has_information_state(typeof(game)) === Val(true)
+    end
+
+    return false
+end
+
+# ----------------------------------------------------------------------
 # Normal-form compiled models
 # ----------------------------------------------------------------------
 
@@ -61,13 +92,16 @@ supports_approx_solvers(::CompiledMarkovModels.CompiledZeroSumMarkovGame) = fals
 # ----------------------------------------------------------------------
 
 function model_role(model::CompiledExtensiveModels.CompiledExtensiveGame)
-    return model.has_simultaneous ? DIAGNOSTIC_ONLY : SOLVER_GRADE
+    return (model.is_tree && !model.has_simultaneous) ? SOLVER_GRADE : DIAGNOSTIC_ONLY
 end
+
+supports_analysis(model::CompiledExtensiveModels.CompiledExtensiveGame) =
+    model.is_tree && !model.has_simultaneous
 
 supports_exact_solvers(::CompiledExtensiveModels.CompiledExtensiveGame) = false
 
 function supports_approx_solvers(model::CompiledExtensiveModels.CompiledExtensiveGame)
-    return !model.has_simultaneous && model.n_players == 2
+    return model.is_tree && !model.has_simultaneous && model.n_players == 2
 end
 
 end

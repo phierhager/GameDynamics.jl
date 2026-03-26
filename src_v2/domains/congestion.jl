@@ -38,7 +38,6 @@ function rosenthal_potential(g::ResourceCongestionGame, profile::NTuple{N,Int}) 
     return pot
 end
 
-Classification.is_congestion_game(::ResourceCongestionGame) = true
 Classification.is_potential_game(::ResourceCongestionGame) = true
 Classification.is_anonymous_game(::ResourceCongestionGame) = true
 

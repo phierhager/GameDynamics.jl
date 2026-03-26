@@ -17,10 +17,8 @@ export is_zero_sum
 export is_general_sum
 export is_noncooperative
 export is_signaling_game
-export is_congestion_game
 export is_potential_game
 export is_anonymous_game
-export is_graphical_game
 export is_network_game
 export is_stackelberg_game
 export is_hierarchical_game
@@ -57,8 +55,6 @@ is_noncooperative(::Kernel.AbstractGame) = true
 is_signaling_game(::Any) = false
 is_congestion_game(::Any) = false
 is_potential_game(::Any) = false
-is_anonymous_game(::Any) = false
-is_graphical_game(::Any) = false
 is_network_game(::Any) = false
 is_stackelberg_game(::Any) = false
 is_hierarchical_game(::Any) = false

@@ -33,8 +33,11 @@ action_space(game::Kernel.AbstractGame, state, player::Int) =
 Canonical indexed base action space for IndexedActions games.
 Only valid for games with `action_mode(typeof(game)) === IndexedActions`.
 """
-base_action_space(game::Kernel.AbstractGame, player::Int) =
-    Spaces.IndexedDiscreteSpace(Kernel.num_base_actions(game, player))
+function base_action_space(game::Kernel.AbstractGame, player::Int)
+    Kernel.action_mode(typeof(game)) === Kernel.IndexedActions ||
+        throw(ArgumentError("base_action_space is only valid for IndexedActions games."))
+    return Spaces.IndexedDiscreteSpace(Kernel.num_base_actions(game, player))
+end
 
 """
 Optional imperfect-information APIs.

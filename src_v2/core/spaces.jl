@@ -14,6 +14,10 @@ The container may be a tuple or an abstract vector.
 """
 struct FiniteSpace{T,C} <: AbstractSpace
     elements::C
+    function FiniteSpace{T,C}(elements::C) where {T,C}
+        isempty(elements) && throw(ArgumentError("FiniteSpace cannot be empty."))
+        new{T,C}(elements)
+    end
 end
 
 FiniteSpace(elements::C) where {C<:Tuple} = FiniteSpace{eltype(elements), C}(elements)
@@ -25,19 +29,38 @@ Useful for indexed-action games and masks.
 """
 struct IndexedDiscreteSpace <: AbstractSpace
     n::Int
+    function IndexedDiscreteSpace(n::Int)
+        n > 0 || throw(ArgumentError("IndexedDiscreteSpace size must be positive, got $n."))
+        new(n)
+    end
 end
 
 struct BoxSpace{T<:Real,V<:AbstractVector{T}} <: AbstractSpace
     low::V
     high::V
+    function BoxSpace(low::V, high::V) where {T<:Real,V<:AbstractVector{T}}
+        length(low) == length(high) ||
+            throw(ArgumentError("BoxSpace low/high must have the same length, got $(length(low)) and $(length(high))."))
+        all(low .<= high) ||
+            throw(ArgumentError("BoxSpace requires low .<= high elementwise."))
+        new{T,V}(low, high)
+    end
 end
 
 struct SimplexSpace <: AbstractSpace
     n::Int
+    function SimplexSpace(n::Int)
+        n > 0 || throw(ArgumentError("SimplexSpace dimension must be positive, got $n."))
+        new(n)
+    end
 end
 
 struct ProductSpace{S<:Tuple} <: AbstractSpace
     spaces::S
+    function ProductSpace(spaces::S) where {S<:Tuple}
+        length(spaces) > 0 || throw(ArgumentError("ProductSpace cannot be empty."))
+        new{S}(spaces)
+    end
 end
 
 dimension(::FiniteSpace) = nothing
@@ -46,24 +69,28 @@ dimension(s::BoxSpace) = length(s.low)
 dimension(s::SimplexSpace) = s.n
 function dimension(s::ProductSpace)
     dims = ntuple(i -> dimension(s.spaces[i]), length(s.spaces))
-    all(!isnothing, dims) || return nothing
+    all(d -> !isnothing(d), dims) || return nothing
     return sum(dims)
 end
 
 contains(space::FiniteSpace, x) = x in space.elements
 contains(space::IndexedDiscreteSpace, x) = x isa Integer && 1 <= x <= space.n
-contains(space::BoxSpace, x) =
-    length(x) == length(space.low) &&
-    all(space.low .<= x) &&
-    all(x .<= space.high)
-contains(space::SimplexSpace, x) =
-    length(x) == space.n && all(x .>= 0) && isapprox(sum(x), 1.0; atol = 1e-8)
+function contains(space::BoxSpace, x)
+    (x isa AbstractVector || x isa Tuple) || return false
+    length(x) == length(space.low) || return false
+    return all(space.low .<= x) && all(x .<= space.high)
+end
+function contains(space::SimplexSpace, x)
+    (x isa AbstractVector || x isa Tuple) || return false
+    length(x) == space.n || return false
+    return all(x .>= 0) && isapprox(sum(x), 1.0; atol = 1e-8)
+end
 contains(space::ProductSpace, x) =
     length(x) == length(space.spaces) &&
     all(contains(space.spaces[i], x[i]) for i in eachindex(space.spaces))
 
 sample(rng::AbstractRNG, s::FiniteSpace) = rand(rng, s.elements)
-sample(rng::AbstractRNG, s::IndexedDiscreteSpace) = rand(rng, 1:s.n)
+sample(rng::AbstractRNG, s::IndexedDiscreteSpace) = rand(rng, Base.OneTo(s.n))
 sample(rng::AbstractRNG, s::BoxSpace) = s.low .+ rand(rng, length(s.low)) .* (s.high .- s.low)
 
 function sample(rng::AbstractRNG, s::SimplexSpace)
