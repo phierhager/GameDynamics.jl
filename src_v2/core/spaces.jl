@@ -2,15 +2,15 @@ module Spaces
 
 using Random
 
-export AbstractSpace, FiniteSpace, IndexedDiscreteSpace, BoxSpace, SimplexSpace, ProductSpace
+export AbstractSpace
+export FiniteSpace, IndexedDiscreteSpace, BoxSpace, SimplexSpace, ProductSpace
 export contains, sample, dimension
 
 abstract type AbstractSpace end
 
 """
-Explicit finite domain. Good for metadata and small spaces.
-
-The container may be a tuple or an abstract vector.
+Explicit finite domain.
+Good for exact metadata and small enumerated spaces.
 """
 struct FiniteSpace{T,C} <: AbstractSpace
     elements::C
@@ -20,12 +20,11 @@ struct FiniteSpace{T,C} <: AbstractSpace
     end
 end
 
-FiniteSpace(elements::C) where {C<:Tuple} = FiniteSpace{eltype(elements), C}(elements)
-FiniteSpace(elements::C) where {T,C<:AbstractVector{T}} = FiniteSpace{T, C}(elements)
+FiniteSpace(elements::C) where {C<:Tuple} = FiniteSpace{eltype(elements),C}(elements)
+FiniteSpace(elements::C) where {T,C<:AbstractVector{T}} = FiniteSpace{T,C}(elements)
 
 """
-Indexed discrete domain of size n.
-Useful for indexed-action games and masks.
+Finite indexed domain `1:n`.
 """
 struct IndexedDiscreteSpace <: AbstractSpace
     n::Int
@@ -35,18 +34,26 @@ struct IndexedDiscreteSpace <: AbstractSpace
     end
 end
 
+"""
+Axis-aligned box in `R^d`.
+"""
 struct BoxSpace{T<:Real,V<:AbstractVector{T}} <: AbstractSpace
     low::V
     high::V
     function BoxSpace(low::V, high::V) where {T<:Real,V<:AbstractVector{T}}
         length(low) == length(high) ||
             throw(ArgumentError("BoxSpace low/high must have the same length, got $(length(low)) and $(length(high))."))
-        all(low .<= high) ||
-            throw(ArgumentError("BoxSpace requires low .<= high elementwise."))
+        @inbounds for i in eachindex(low, high)
+            low[i] <= high[i] ||
+                throw(ArgumentError("BoxSpace requires low <= high elementwise."))
+        end
         new{T,V}(low, high)
     end
 end
 
+"""
+Probability simplex of dimension `n`.
+"""
 struct SimplexSpace <: AbstractSpace
     n::Int
     function SimplexSpace(n::Int)
@@ -55,6 +62,9 @@ struct SimplexSpace <: AbstractSpace
     end
 end
 
+"""
+Cartesian product of spaces.
+"""
 struct ProductSpace{S<:Tuple} <: AbstractSpace
     spaces::S
     function ProductSpace(spaces::S) where {S<:Tuple}
@@ -67,6 +77,7 @@ dimension(::FiniteSpace) = nothing
 dimension(s::IndexedDiscreteSpace) = s.n
 dimension(s::BoxSpace) = length(s.low)
 dimension(s::SimplexSpace) = s.n
+
 function dimension(s::ProductSpace)
     dims = ntuple(i -> dimension(s.spaces[i]), length(s.spaces))
     all(d -> !isnothing(d), dims) || return nothing
@@ -75,19 +86,36 @@ end
 
 contains(space::FiniteSpace, x) = x in space.elements
 contains(space::IndexedDiscreteSpace, x) = x isa Integer && 1 <= x <= space.n
+
 function contains(space::BoxSpace, x)
     (x isa AbstractVector || x isa Tuple) || return false
     length(x) == length(space.low) || return false
-    return all(space.low .<= x) && all(x .<= space.high)
+    @inbounds for i in eachindex(space.low)
+        xi = x[i]
+        (space.low[i] <= xi <= space.high[i]) || return false
+    end
+    return true
 end
+
 function contains(space::SimplexSpace, x)
     (x isa AbstractVector || x isa Tuple) || return false
     length(x) == space.n || return false
-    return all(x .>= 0) && isapprox(sum(x), 1.0; atol = 1e-8)
+    s = 0.0
+    @inbounds for i in eachindex(x)
+        xi = x[i]
+        xi >= 0 || return false
+        s += xi
+    end
+    return isapprox(s, 1.0; atol = 1e-8)
 end
-contains(space::ProductSpace, x) =
-    length(x) == length(space.spaces) &&
-    all(contains(space.spaces[i], x[i]) for i in eachindex(space.spaces))
+
+function contains(space::ProductSpace, x)
+    length(x) == length(space.spaces) || return false
+    @inbounds for i in eachindex(space.spaces)
+        contains(space.spaces[i], x[i]) || return false
+    end
+    return true
+end
 
 sample(rng::AbstractRNG, s::FiniteSpace) = rand(rng, s.elements)
 sample(rng::AbstractRNG, s::IndexedDiscreteSpace) = rand(rng, Base.OneTo(s.n))
@@ -99,7 +127,7 @@ function sample(rng::AbstractRNG, s::SimplexSpace)
 end
 
 """
-Return a tuple to preserve product structure and type stability.
+Returns a tuple to preserve structure and type stability.
 """
 sample(rng::AbstractRNG, s::ProductSpace) =
     ntuple(i -> sample(rng, s.spaces[i]), length(s.spaces))
