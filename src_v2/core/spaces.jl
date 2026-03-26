@@ -20,8 +20,12 @@ struct FiniteSpace{T,C} <: AbstractSpace
     end
 end
 
-FiniteSpace(elements::C) where {C<:Tuple} = FiniteSpace{eltype(elements),C}(elements)
 FiniteSpace(elements::C) where {T,C<:AbstractVector{T}} = FiniteSpace{T,C}(elements)
+
+function FiniteSpace(elements::Tup) where {T,Tup<:Tuple{Vararg{T}}}
+    isempty(elements) && throw(ArgumentError("FiniteSpace cannot be empty."))
+    return FiniteSpace{T,Tup}(elements)
+end
 
 """
 Finite indexed domain `1:n`.
@@ -110,8 +114,10 @@ function contains(space::SimplexSpace, x)
 end
 
 function contains(space::ProductSpace, x)
+    applicable(length, x) || return false
     length(x) == length(space.spaces) || return false
     @inbounds for i in eachindex(space.spaces)
+        applicable(getindex, x, i) || return false
         contains(space.spaces[i], x[i]) || return false
     end
     return true

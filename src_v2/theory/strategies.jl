@@ -21,6 +21,60 @@ export joint_probability, joint_density
 abstract type AbstractStrategy end
 
 # ----------------------------------------------------------------------
+# Typed support canonicalization
+# ----------------------------------------------------------------------
+
+function _canonicalize_support_probs(actions::A, probs) where {A}
+    length(actions) == length(probs) ||
+        throw(ArgumentError("Actions and probabilities must have the same length."))
+    isempty(actions) && throw(ArgumentError("Support must be nonempty."))
+
+    p = _normalize_probs(probs)
+
+    T = eltype(actions)
+    acc = Dict{T,Float64}()
+    order = Vector{T}()
+
+    @inbounds for i in eachindex(actions)
+        a = actions[i]
+        if !haskey(acc, a)
+            push!(order, a)
+            acc[a] = 0.0
+        end
+        acc[a] += p[i]
+    end
+
+    acts = Tuple(order)
+    ps = ntuple(i -> acc[order[i]], length(order))
+    return acts, ps
+end
+
+function _canonicalize_profiles_probs(support_profiles::S, probs) where {S}
+    length(support_profiles) == length(probs) ||
+        throw(ArgumentError("Support and probabilities must have the same length."))
+    isempty(support_profiles) && throw(ArgumentError("Support must be nonempty."))
+
+    p = _normalize_probs(probs)
+
+    T = eltype(support_profiles)
+    acc = Dict{T,Float64}()
+    order = Vector{T}()
+
+    @inbounds for i in eachindex(support_profiles)
+        prof = support_profiles[i]
+        if !haskey(acc, prof)
+            push!(order, prof)
+            acc[prof] = 0.0
+        end
+        acc[prof] += p[i]
+    end
+
+    profs = Tuple(order)
+    ps = ntuple(i -> acc[order[i]], length(order))
+    return profs, ps
+end
+
+# ----------------------------------------------------------------------
 # Profiles
 # ----------------------------------------------------------------------
 
@@ -47,6 +101,13 @@ end
 Base.getindex(p::StrategyProfile, i::Int) = p.strategies[i]
 Base.length(::StrategyProfile{N}) where {N} = N
 Base.iterate(p::StrategyProfile, st...) = iterate(p.strategies, st...)
+Base.eltype(::Type{<:StrategyProfile}) = AbstractStrategy
+Base.firstindex(::StrategyProfile) = 1
+Base.lastindex(p::StrategyProfile) = length(p)
+Base.Tuple(p::StrategyProfile) = p.strategies
+
+num_strategies(p::StrategyProfile{N}) where {N} = N
+num_strategies(p::Tuple) = length(p)
 
 # ----------------------------------------------------------------------
 # Pure / deterministic strategies
@@ -88,10 +149,8 @@ function _normalize_probs(probs::AbstractVector)
 end
 
 function FiniteMixedStrategy(actions, probs)
-    length(actions) == length(probs) ||
-        throw(ArgumentError("Actions and probabilities must have the same length."))
-    p = _normalize_probs(probs)
-    return FiniteMixedStrategy{typeof(actions), typeof(p)}(actions, p)
+    acts, p = _canonicalize_support_probs(actions, probs)
+    return FiniteMixedStrategy{typeof(acts), typeof(p)}(acts, p)
 end
 
 FiniteMixedStrategy(probs) = FiniteMixedStrategy(Base.OneTo(length(probs)), probs)
@@ -150,10 +209,8 @@ struct CorrelatedStrategy{S,P} <: AbstractStrategy
 end
 
 function CorrelatedStrategy(support_profiles, probs)
-    length(support_profiles) == length(probs) ||
-        throw(ArgumentError("Support and probabilities must have the same length."))
-    p = _normalize_probs(probs)
-    return CorrelatedStrategy{typeof(support_profiles), typeof(p)}(support_profiles, p)
+    profs, p = _canonicalize_profiles_probs(support_profiles, probs)
+    return CorrelatedStrategy{typeof(profs), typeof(p)}(profs, p)
 end
 
 support(s::CorrelatedStrategy) = s.support_profiles
@@ -285,8 +342,8 @@ support(s::SamplerDensityStrategy) = s.domain
 sample_action(s::SamplerDensityStrategy, rng::AbstractRNG = Random.default_rng()) = s.sampler(rng)
 density(s::SamplerDensityStrategy, action) = s.density_fn(action)
 
-density(::AbstractStrategy, action) =
-    throw(MethodError(density, (action,)))
+density(strategy::AbstractStrategy, action) =
+    throw(MethodError(density, (strategy, action)))
 
 function monte_carlo_expectation(f, s::AbstractStrategy; rng::AbstractRNG = Random.default_rng(), n_samples::Int = 1024)
     n_samples > 0 || throw(ArgumentError("n_samples must be positive."))
@@ -302,9 +359,8 @@ end
 # ----------------------------------------------------------------------
 
 @inline function _sample_joint_action_tuple(profile::Tuple, rng::AbstractRNG)
-    N = length(profile)
-    acts = ntuple(i -> sample_action(profile[i], rng), N)
-    return Kernel.JointAction{N}(acts)
+    acts = ntuple(i -> sample_action(profile[i], rng), length(profile))
+    return Kernel.joint_action(acts)
 end
 
 sample_joint_action(profile::StrategyProfile{N}, rng::AbstractRNG = Random.default_rng()) where {N} =
@@ -320,9 +376,8 @@ end
 @inline function _joint_probability_tuple(profile::Tuple, actions::Tuple)
     length(profile) == length(actions) ||
         throw(ArgumentError("Profile and action tuple must have the same length."))
-    N = length(profile)
     p = 1.0
-    @inbounds for i in 1:N
+    @inbounds for i in eachindex(profile)
         p *= probability(profile[i], actions[i])
     end
     return p
@@ -341,9 +396,8 @@ end
 @inline function _joint_density_tuple(profile::Tuple, actions::Tuple)
     length(profile) == length(actions) ||
         throw(ArgumentError("Profile and action tuple must have the same length."))
-    N = length(profile)
     d = 1.0
-    @inbounds for i in 1:N
+    @inbounds for i in eachindex(profile)
         d *= density(profile[i], actions[i])
     end
     return d

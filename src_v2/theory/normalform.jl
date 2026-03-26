@@ -3,7 +3,6 @@ module NormalForm
 using Random
 using ..Kernel
 using ..Spaces
-using ..Capabilities
 using ..Exact
 using ..Spec
 using ..Strategies
@@ -19,10 +18,49 @@ struct NormalFormState <: Kernel.AbstractState
     played::Bool
 end
 
-struct NormalFormGame{N,T<:Tuple,R} <: Kernel.AbstractFixedGame{N,R}
+struct NormalFormGame{N,T<:Tuple,R} <: Kernel.AbstractGame{N,R}
     payoffs::T
     action_sizes::NTuple{N,Int}
     spec::Spec.GameSpec
+end
+
+function _infer_payoff_kind(payoffs::T) where {T<:Tuple}
+    N = length(payoffs)
+
+    if N == 2
+        zs = true
+        @inbounds for I in eachindex(payoffs[1])
+            if !isapprox(payoffs[1][I] + payoffs[2][I], 0.0; atol=1e-12, rtol=1e-10)
+                zs = false
+                break
+            end
+        end
+        zs && return Spec.ZERO_SUM
+    end
+
+    total = payoffs[1]
+    for p in 2:N
+        total = total .+ payoffs[p]
+    end
+
+    first_val = Float64(total[first(eachindex(total))])
+    constant_sum = true
+    @inbounds for x in total
+        if !isapprox(Float64(x), first_val; atol=1e-12, rtol=1e-10)
+            constant_sum = false
+            break
+        end
+    end
+
+    return constant_sum ? Spec.CONSTANT_SUM : Spec.GENERAL_SUM
+end
+
+function _infer_reward_sharing(payoff_kind::Spec.PayoffKind)
+    if payoff_kind == Spec.ZERO_SUM || payoff_kind == Spec.CONSTANT_SUM || payoff_kind == Spec.GENERAL_SUM
+        return Spec.INDEPENDENT_REWARD
+    else
+        return Spec.UNKNOWN_REWARD_SHARING
+    end
 end
 
 function NormalFormGame(payoffs::T) where {T<:Tuple}
@@ -38,17 +76,20 @@ function NormalFormGame(payoffs::T) where {T<:Tuple}
             throw(ArgumentError("All payoff tensors must have identical shape."))
     end
 
+    payoff_kind = _infer_payoff_kind(payoffs)
     R = NTuple{N,Float64}
+
     spec = Spec.GameSpec(
-        perfect_information = true,
-        perfect_recall = true,
+        horizon_kind = Spec.EPISODIC,
+        payoff_kind = payoff_kind,
+        max_steps = 1,
+        default_discount = 1.0,
+        perfect_information = false,
         stochastic = false,
         simultaneous_moves = true,
-        zero_sum = N == 2 ? all(payoffs[1] .+ payoffs[2] .== 0) : false,
-        general_sum = true,
-        horizon_kind = Spec.EPISODIC,
-        player_model = Spec.FIXED_PLAYERS,
-        max_steps = 1,
+        observation_kind = Spec.UNKNOWN_OBSERVATION,
+        cooperative = false,
+        reward_sharing = _infer_reward_sharing(payoff_kind),
     )
 
     return NormalFormGame{N,T,R}(payoffs, ntuple(i -> dims[i], N), spec)
@@ -64,13 +105,11 @@ function support_profiles(g::NormalFormGame{N}) where {N}
 end
 
 Kernel.action_mode(::Type{<:NormalFormGame}) = Kernel.IndexedActions
-
-Capabilities.has_action_mask(::Type{<:NormalFormGame}) = Val(true)
-Capabilities.has_state_space(::Type{<:NormalFormGame}) = Val(true)
-Capabilities.has_action_space(::Type{<:NormalFormGame}) = Val(true)
+Kernel.has_action_mask(::Type{<:NormalFormGame}) = true
 
 Spec.game_spec(g::NormalFormGame) = g.spec
 Classification.is_normal_form(::NormalFormGame) = true
+Classification.is_extensive_form(::NormalFormGame) = false
 
 Kernel.init_state(::NormalFormGame, rng::AbstractRNG = Random.default_rng()) = NormalFormState(false)
 
@@ -82,23 +121,26 @@ Kernel.active_players(::NormalFormGame{N}, s::NormalFormState) where {N} = Base.
 Kernel.legal_actions(g::NormalFormGame, s::NormalFormState, player::Int) =
     Base.OneTo(g.action_sizes[player])
 
-Kernel.num_base_actions(g::NormalFormGame, player::Int) = g.action_sizes[player]
+Kernel.indexed_action_count(g::NormalFormGame, player::Int) = g.action_sizes[player]
 
 Kernel.legal_action_mask(g::NormalFormGame, s::NormalFormState, player::Int) =
     ntuple(_ -> true, g.action_sizes[player])
 
-Kernel.encode_action(::NormalFormGame, player::Int, action::Int) = action
-Kernel.decode_action(::NormalFormGame, player::Int, index::Int) = index
-
-function Kernel.step(g::NormalFormGame{N}, s::NormalFormState, a::Kernel.JointAction{N}, rng::AbstractRNG = Random.default_rng()) where {N}
+function Kernel.step(g::NormalFormGame{N},
+                     s::NormalFormState,
+                     a::Kernel.JointAction,
+                     rng::AbstractRNG = Random.default_rng()) where {N}
     s.played && throw(ArgumentError("Cannot step from a terminal normal-form state."))
-    profile = a.actions
-    @inbounds for p in 1:N
-        1 <= profile[p] <= g.action_sizes[p] ||
-            throw(ArgumentError("Illegal action $(profile[p]) for player $p."))
-    end
+
+    Kernel.validate_joint_action(g, s, a)
+
+    profile = Tuple(a)
+    length(profile) == N || throw(ArgumentError(
+        "NormalFormGame expected $N simultaneous actions, got $(length(profile))."
+    ))
+
     rewards = ntuple(p -> Float64(g.payoffs[p][profile...]), N)
-    return NormalFormState(true), rewards, true
+    return NormalFormState(true), rewards
 end
 
 Kernel.observe(::NormalFormGame, s::NormalFormState, player::Int) = nothing
@@ -109,9 +151,15 @@ Exact.state_space(::NormalFormGame) =
 Exact.action_space(g::NormalFormGame, s::NormalFormState, player::Int) =
     Spaces.IndexedDiscreteSpace(g.action_sizes[player])
 
+Exact.observation_space(::NormalFormGame, player::Int) = Spaces.FiniteSpace((nothing,))
+Exact.indexed_action_space(g::NormalFormGame, player::Int) =
+    Spaces.IndexedDiscreteSpace(g.action_sizes[player])
+
 function Exact.terminal_payoffs(::NormalFormGame, s::NormalFormState)
     s.played || throw(ArgumentError("terminal_payoffs is only valid on terminal states."))
-    error("NormalFormGame uses transition rewards on play; terminal_payoffs is not a meaningful state-utility API here.")
+    throw(ArgumentError(
+        "NormalFormGame does not expose terminal state payoffs. Use pure_payoff or expected_payoff instead."
+    ))
 end
 
 pure_payoff(g::NormalFormGame{N}, profile::NTuple{N,Int}) where {N} =

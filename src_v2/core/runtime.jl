@@ -49,7 +49,7 @@ struct PlayerSnapshot{O,A,M}
     legal_action_mask::M
 end
 
-mutable struct GameEnv{G<:Kernel.AbstractFixedGame,S,R,L}
+mutable struct GameEnv{G<:Kernel.AbstractGame,S,R,L}
     game::G
     state::S
     rng::R
@@ -59,7 +59,7 @@ mutable struct GameEnv{G<:Kernel.AbstractFixedGame,S,R,L}
     truncated::Bool
 end
 
-function GameEnv(game::Kernel.AbstractFixedGame;
+function GameEnv(game::Kernel.AbstractGame;
                  rng::AbstractRNG = Random.default_rng(),
                  limit = default_episode_limit(game))
     s = Kernel.init_state(game, rng)
@@ -69,18 +69,6 @@ function GameEnv(game::Kernel.AbstractFixedGame;
         game, s, rng, limit, 0, t, tr
     )
 end
-
-@inline function _active_players(game, state, nk::Kernel.NodeKind)
-    if nk == Kernel.DECISION
-        return (Kernel.current_player(game, state),)
-    elseif nk == Kernel.SIMULTANEOUS
-        return Kernel.active_players(game, state)
-    else
-        return ()
-    end
-end
-
-@inline _is_acting_player(active_players, p::Int) = p in active_players
 
 @inline function _maybe_action_mask(game, state, p::Int)
     Kernel.has_action_mask(typeof(game)) || return nothing
@@ -122,9 +110,7 @@ end
 function observe_player(env::GameEnv, p::Int)
     game = env.game
     state = env.state
-    nk = Kernel.node_kind(game, state)
-    aps = _active_players(game, state, nk)
-    acting = _is_acting_player(aps, p)
+    acting = p in Kernel.acting_players(game, state)
 
     obs = Kernel.observe(game, state, p)
     if !acting
