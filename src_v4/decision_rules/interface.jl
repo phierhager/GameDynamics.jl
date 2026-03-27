@@ -9,6 +9,7 @@ export NoConditioning
 export ObservationConditioning
 export StateConditioning
 export HistoryConditioning
+export InfosetConditioning
 
 export AbstractMemoryClass
 export Memoryless
@@ -17,82 +18,83 @@ export FiniteMemory
 
 export conditioning_kind
 export memory_class
-export has_action_likelihood
 
+export support
+export probabilities
 export sample_action
-export action_likelihood
+export action_probability
+export action_density
+export local_rule
+
+export expected_value
+export monte_carlo_expectation
 
 """
-Stable public root for runtime-queryable decision rules.
+Stable public root for decision rules.
 
-A decision rule is the library's unified abstraction for what many RL users call a
-policy and many game theorists call a strategy.
-
-Decision rules are the action-selection objects queried by simulation, rollout,
-runtime, and evaluation layers.
+A decision rule is the library's unified action-selection abstraction. It covers
+what RL often calls a policy and what game theory often calls a strategy.
 """
 abstract type AbstractDecisionRule end
 
 # ----------------------------------------------------------------------
-# Public trait axes
+# Conditioning kinds
 # ----------------------------------------------------------------------
 
-"""
-Trait axis describing what object a decision rule is conditioned on at query time.
-"""
 abstract type AbstractConditioningKind end
 
 """
-Decision rule takes no conditioning input at query time.
+Rule takes no conditioning input at query time.
 """
 struct NoConditioning <: AbstractConditioningKind end
 
 """
-Decision rule is queried on the current observation.
+Rule is queried on the current observation.
 """
 struct ObservationConditioning <: AbstractConditioningKind end
 
 """
-Decision rule is queried on the true current underlying state.
-
-This is a runtime/control abstraction and may be used even when the state is not
-observable to the acting player.
+Rule is queried on the true underlying state.
 """
 struct StateConditioning <: AbstractConditioningKind end
 
 """
-Decision rule is queried on a history object.
+Rule is queried on a history object.
 """
 struct HistoryConditioning <: AbstractConditioningKind end
 
 """
-Trait axis describing how a decision rule represents dependence on the past.
+Rule is queried on an infoset-like object.
 """
+struct InfosetConditioning <: AbstractConditioningKind end
+
+# ----------------------------------------------------------------------
+# Memory classes
+# ----------------------------------------------------------------------
+
 abstract type AbstractMemoryClass end
 
 """
-Decision rule is memoryless relative to its declared conditioning object.
+Rule is memoryless relative to its declared conditioning object.
 """
 struct Memoryless <: AbstractMemoryClass end
 
 """
-Decision rule may depend on history in an unrestricted way.
+Rule may depend on history in an unrestricted way.
 """
 struct HistoryDependent <: AbstractMemoryClass end
 
 """
-Reserved stable extension point for finite-memory decision rules.
+Reserved stable extension point for finite-memory rules.
 """
 struct FiniteMemory <: AbstractMemoryClass end
 
 # ----------------------------------------------------------------------
-# Required public trait declarations
+# Trait declarations
 # ----------------------------------------------------------------------
 
 """
 Return the declared conditioning kind for a decision-rule type.
-
-Concrete public decision-rule types are expected to implement this explicitly.
 """
 function conditioning_kind(::Type{<:AbstractDecisionRule})
     throw(MethodError(conditioning_kind, (AbstractDecisionRule,)))
@@ -102,8 +104,6 @@ conditioning_kind(rule::AbstractDecisionRule) = conditioning_kind(typeof(rule))
 
 """
 Return the declared memory class for a decision-rule type.
-
-Concrete public decision-rule types are expected to implement this explicitly.
 """
 function memory_class(::Type{<:AbstractDecisionRule})
     throw(MethodError(memory_class, (AbstractDecisionRule,)))
@@ -111,34 +111,26 @@ end
 
 memory_class(rule::AbstractDecisionRule) = memory_class(typeof(rule))
 
-"""
-Whether `action_likelihood` is implemented for this decision-rule type.
-
-When true, `action_likelihood` must return a normalized probabilistic quantity
-conditional on the queried input.
-"""
-has_action_likelihood(::Type{<:AbstractDecisionRule}) = false
-has_action_likelihood(rule::AbstractDecisionRule) = has_action_likelihood(typeof(rule))
-
 # ----------------------------------------------------------------------
-# Canonical query interface
+# Capability interfaces
 # ----------------------------------------------------------------------
 
 """
-Sample an action from the decision rule.
+Return the finite support of a rule, when such a notion is available.
+"""
+function support end
 
-Expected signatures by conditioning kind:
+"""
+Return probabilities aligned with `support(rule)`, when such a notion is available.
+"""
+function probabilities end
 
-- `NoConditioning`:
-    `sample_action(rule, rng)`
-- `ObservationConditioning`:
-    `sample_action(rule, observation, rng)`
-- `StateConditioning`:
-    `sample_action(rule, state, rng)`
-- `HistoryConditioning`:
-    `sample_action(rule, history, rng)`
+"""
+Sample an action from the rule.
 
-Convenience methods may default `rng` to `Random.default_rng()`.
+Expected signatures include:
+- `sample_action(rule, rng)` for unconditioned rules
+- `sample_action(rule, conditioning, rng)` for conditioned rules
 """
 function sample_action end
 
@@ -149,26 +141,63 @@ sample_action(rule::AbstractDecisionRule, conditioning) =
     sample_action(rule, conditioning, Random.default_rng())
 
 """
-Return the conditional action likelihood for the queried input.
+Return the action probability for the queried input.
 
-Expected signatures by conditioning kind:
-
-- `NoConditioning`:
-    `action_likelihood(rule, action)`
-- `ObservationConditioning`:
-    `action_likelihood(rule, observation, action)`
-- `StateConditioning`:
-    `action_likelihood(rule, state, action)`
-- `HistoryConditioning`:
-    `action_likelihood(rule, history, action)`
-
-This is an optional capability.
+Examples:
+- `action_probability(rule, action)`
+- `action_probability(rule, observation, action)`
+- `action_probability(rule, infoset, action)`
 """
-function action_likelihood end
+function action_probability end
 
-function action_likelihood(rule::AbstractDecisionRule, args...)
-    has_action_likelihood(rule) || throw(MethodError(action_likelihood, (rule, args...)))
-    throw(MethodError(action_likelihood, (rule, args...)))
+"""
+Return the action density for the queried input, when density is defined.
+
+Examples:
+- `action_density(rule, action)`
+- `action_density(rule, state, action)`
+"""
+function action_density end
+
+"""
+Return a local rule conditioned on some indexing object, when the rule is a
+container of local rules.
+"""
+function local_rule end
+
+# ----------------------------------------------------------------------
+# Generic evaluation helpers
+# ----------------------------------------------------------------------
+
+"""
+Expected value under a finite-support rule.
+
+`values` must align with `support(rule)`.
+"""
+function expected_value(rule::AbstractDecisionRule, values)
+    ps = probabilities(rule)
+    length(values) == length(ps) ||
+        throw(ArgumentError("Values must align with the decision-rule support."))
+    acc = 0.0
+    @inbounds for i in eachindex(ps)
+        acc += ps[i] * values[i]
+    end
+    return acc
+end
+
+"""
+Monte Carlo expectation under a sampleable rule.
+"""
+function monte_carlo_expectation(f,
+                                 rule::AbstractDecisionRule;
+                                 rng::AbstractRNG = Random.default_rng(),
+                                 n_samples::Int = 1024)
+    n_samples > 0 || throw(ArgumentError("n_samples must be positive."))
+    acc = 0.0
+    for _ in 1:n_samples
+        acc += f(sample_action(rule, rng))
+    end
+    return acc / n_samples
 end
 
 end

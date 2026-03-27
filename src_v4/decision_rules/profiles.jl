@@ -3,146 +3,185 @@ module DecisionRuleProfiles
 using Random
 using ..Kernel
 using ..DecisionRulesInterface
-using ..POSG
 
-export ObservationRuleProfile
-export UnconditionedRuleProfile
-export StateRuleProfile
-export POSGRuleProfile
-export DecPOMDPRuleProfile
+export DecisionRuleProfile
+export num_rules
+
+export conditioning_kinds
+export memory_classes
+
+export is_unconditioned
+export is_observation_conditioned
+export is_state_conditioned
+export is_history_conditioned
+export is_infoset_conditioned
+export is_memoryless
+
+export require_profile_length
+export require_unconditioned
+export require_observation_conditioned
+export require_state_conditioned
+export require_history_conditioned
+export require_infoset_conditioned
+export require_memoryless
+
+export unconditioned_rule_profile
+export observation_rule_profile
+export state_rule_profile
+export history_rule_profile
+export infoset_rule_profile
 
 export local_observations
+export sample_action_tuple
+export sample_joint_action
 export sample_profile_action
+export joint_probability
+export joint_density
 
 """
-Lower-level utility profile for observation-conditioned decision rules.
+Tuple-backed fixed-player decision-rule profile.
+
+The field type is left as a concrete tuple type to preserve heterogeneous
+rule types for inference. Constructor validation enforces that all entries
+are decision rules.
 """
-struct ObservationRuleProfile{P<:Tuple}
-    rules::P
+struct DecisionRuleProfile{N,R<:Tuple}
+    rules::R
 end
 
-"""
-Noncanonical runtime profile for unconditioned decision rules.
-"""
-struct UnconditionedRuleProfile{P<:Tuple}
-    rules::P
+function DecisionRuleProfile(rules::R) where {R<:Tuple}
+    N = length(rules)
+    @inbounds for i in 1:N
+        rules[i] isa DecisionRulesInterface.AbstractDecisionRule ||
+            throw(ArgumentError(
+                "All entries of a DecisionRuleProfile must subtype AbstractDecisionRule. Entry $i has type $(typeof(rules[i]))."
+            ))
+    end
+    return DecisionRuleProfile{N,R}(rules)
 end
 
-"""
-Canonical runtime profile for state-conditioned decision rules.
-"""
-struct StateRuleProfile{P<:Tuple}
-    rules::P
+Base.getindex(p::DecisionRuleProfile, i::Int) = p.rules[i]
+Base.length(::DecisionRuleProfile{N}) where {N} = N
+Base.iterate(p::DecisionRuleProfile, st...) = iterate(p.rules, st...)
+Base.eltype(::Type{<:DecisionRuleProfile}) = DecisionRulesInterface.AbstractDecisionRule
+Base.firstindex(::DecisionRuleProfile) = 1
+Base.lastindex(p::DecisionRuleProfile) = length(p)
+Base.Tuple(p::DecisionRuleProfile) = p.rules
+
+num_rules(p::DecisionRuleProfile{N}) where {N} = N
+num_rules(p::Tuple) = length(p)
+
+# ----------------------------------------------------------------------
+# Introspection
+# ----------------------------------------------------------------------
+
+conditioning_kinds(profile::DecisionRuleProfile) =
+    ntuple(i -> DecisionRulesInterface.conditioning_kind(profile[i]), length(profile))
+
+memory_classes(profile::DecisionRuleProfile) =
+    ntuple(i -> DecisionRulesInterface.memory_class(profile[i]), length(profile))
+
+@inline function _all_conditioning(profile::DecisionRuleProfile, ::Type{K}) where {K<:DecisionRulesInterface.AbstractConditioningKind}
+    @inbounds for i in eachindex(profile.rules)
+        DecisionRulesInterface.conditioning_kind(profile[i]) isa K || return false
+    end
+    return true
 end
 
-"""
-Canonical observation-based memoryless POSG runtime profile.
-"""
-struct POSGRuleProfile{P<:Tuple}
-    rules::P
-end
+is_unconditioned(profile::DecisionRuleProfile) =
+    _all_conditioning(profile, DecisionRulesInterface.NoConditioning)
 
-"""
-Canonical observation-based memoryless Dec-POMDP runtime profile.
-"""
-struct DecPOMDPRuleProfile{P<:Tuple}
-    rules::P
+is_observation_conditioned(profile::DecisionRuleProfile) =
+    _all_conditioning(profile, DecisionRulesInterface.ObservationConditioning)
+
+is_state_conditioned(profile::DecisionRuleProfile) =
+    _all_conditioning(profile, DecisionRulesInterface.StateConditioning)
+
+is_history_conditioned(profile::DecisionRuleProfile) =
+    _all_conditioning(profile, DecisionRulesInterface.HistoryConditioning)
+
+is_infoset_conditioned(profile::DecisionRuleProfile) =
+    _all_conditioning(profile, DecisionRulesInterface.InfosetConditioning)
+
+function is_memoryless(profile::DecisionRuleProfile)
+    @inbounds for i in eachindex(profile.rules)
+        DecisionRulesInterface.memory_class(profile[i]) isa DecisionRulesInterface.Memoryless || return false
+    end
+    return true
 end
 
 # ----------------------------------------------------------------------
 # Validation helpers
 # ----------------------------------------------------------------------
 
-@inline function _validate_profile_length(rules::Tuple, game::Kernel.AbstractGame)
+function require_profile_length(profile::DecisionRuleProfile, game::Kernel.AbstractGame)
     N = Kernel.num_players(game)
-    length(rules) == N || throw(ArgumentError(
-        "Decision-rule profile length $(length(rules)) does not match number of players $N."
+    length(profile) == N || throw(ArgumentError(
+        "Decision-rule profile length $(length(profile)) does not match number of players $N."
     ))
-    return N
+    return profile
 end
 
-@inline function _require_rules(rules::Tuple)
-    @inbounds for i in eachindex(rules)
-        rules[i] isa DecisionRulesInterface.AbstractDecisionRule ||
-            throw(ArgumentError(
-                "All entries must subtype AbstractDecisionRule. Entry $i has type $(typeof(rules[i]))."
-            ))
-    end
-    return nothing
+function require_unconditioned(profile::DecisionRuleProfile)
+    is_unconditioned(profile) || throw(ArgumentError(
+        "Expected an unconditioned decision-rule profile."
+    ))
+    return profile
 end
 
-@inline function _check_rule_kinds_obs(rules::Tuple)
-    @inbounds for i in eachindex(rules)
-        r = rules[i]
-        DecisionRulesInterface.conditioning_kind(r) isa DecisionRulesInterface.ObservationConditioning ||
-            throw(ArgumentError("Expected observation-conditioned decision rule at slot $i."))
-    end
-    return nothing
+function require_observation_conditioned(profile::DecisionRuleProfile)
+    is_observation_conditioned(profile) || throw(ArgumentError(
+        "Expected an observation-conditioned decision-rule profile."
+    ))
+    return profile
 end
 
-@inline function _check_rule_kinds_state(rules::Tuple)
-    @inbounds for i in eachindex(rules)
-        r = rules[i]
-        DecisionRulesInterface.conditioning_kind(r) isa DecisionRulesInterface.StateConditioning ||
-            throw(ArgumentError("Expected state-conditioned decision rule at slot $i."))
-    end
-    return nothing
+function require_state_conditioned(profile::DecisionRuleProfile)
+    is_state_conditioned(profile) || throw(ArgumentError(
+        "Expected a state-conditioned decision-rule profile."
+    ))
+    return profile
 end
 
-@inline function _check_rule_kinds_none(rules::Tuple)
-    @inbounds for i in eachindex(rules)
-        r = rules[i]
-        DecisionRulesInterface.conditioning_kind(r) isa DecisionRulesInterface.NoConditioning ||
-            throw(ArgumentError("Expected unconditioned decision rule at slot $i."))
-    end
-    return nothing
+function require_history_conditioned(profile::DecisionRuleProfile)
+    is_history_conditioned(profile) || throw(ArgumentError(
+        "Expected a history-conditioned decision-rule profile."
+    ))
+    return profile
 end
 
-@inline function _check_memoryless(rules::Tuple, who::AbstractString)
-    @inbounds for i in eachindex(rules)
-        DecisionRulesInterface.memory_class(rules[i]) isa DecisionRulesInterface.Memoryless ||
-            throw(ArgumentError(
-                "$who requires memoryless local decision rules; slot $i is $(typeof(DecisionRulesInterface.memory_class(rules[i])))."
-            ))
-    end
-    return nothing
+function require_infoset_conditioned(profile::DecisionRuleProfile)
+    is_infoset_conditioned(profile) || throw(ArgumentError(
+        "Expected an infoset-conditioned decision-rule profile."
+    ))
+    return profile
+end
+
+function require_memoryless(profile::DecisionRuleProfile)
+    is_memoryless(profile) || throw(ArgumentError(
+        "Expected a memoryless decision-rule profile."
+    ))
+    return profile
 end
 
 # ----------------------------------------------------------------------
-# Constructors
+# Convenience constructors
 # ----------------------------------------------------------------------
 
-function ObservationRuleProfile(rules::P) where {P<:Tuple}
-    _require_rules(rules)
-    _check_rule_kinds_obs(rules)
-    return ObservationRuleProfile{P}(rules)
-end
+unconditioned_rule_profile(rules::Tuple) =
+    require_unconditioned(DecisionRuleProfile(rules))
 
-function UnconditionedRuleProfile(rules::P) where {P<:Tuple}
-    _require_rules(rules)
-    _check_rule_kinds_none(rules)
-    return UnconditionedRuleProfile{P}(rules)
-end
+observation_rule_profile(rules::Tuple) =
+    require_observation_conditioned(DecisionRuleProfile(rules))
 
-function StateRuleProfile(rules::P) where {P<:Tuple}
-    _require_rules(rules)
-    _check_rule_kinds_state(rules)
-    return StateRuleProfile{P}(rules)
-end
+state_rule_profile(rules::Tuple) =
+    require_state_conditioned(DecisionRuleProfile(rules))
 
-function POSGRuleProfile(rules::P) where {P<:Tuple}
-    _require_rules(rules)
-    _check_rule_kinds_obs(rules)
-    _check_memoryless(rules, "Canonical POSGRuleProfile")
-    return POSGRuleProfile{P}(rules)
-end
+history_rule_profile(rules::Tuple) =
+    require_history_conditioned(DecisionRuleProfile(rules))
 
-function DecPOMDPRuleProfile(rules::P) where {P<:Tuple}
-    _require_rules(rules)
-    _check_rule_kinds_obs(rules)
-    _check_memoryless(rules, "Canonical DecPOMDPRuleProfile")
-    return DecPOMDPRuleProfile{P}(rules)
-end
+infoset_rule_profile(rules::Tuple) =
+    require_infoset_conditioned(DecisionRuleProfile(rules))
 
 # ----------------------------------------------------------------------
 # Utilities
@@ -157,29 +196,81 @@ local_observations(game::Kernel.AbstractGame, state) =
     return a
 end
 
+@inline function _query_runtime_action(rule, game, state, p::Int, rng::AbstractRNG)
+    kind = DecisionRulesInterface.conditioning_kind(rule)
+
+    if kind isa DecisionRulesInterface.NoConditioning
+        return DecisionRulesInterface.sample_action(rule, rng)
+
+    elseif kind isa DecisionRulesInterface.ObservationConditioning
+        obs = Kernel.observe(game, state, p)
+        return DecisionRulesInterface.sample_action(rule, obs, rng)
+
+    elseif kind isa DecisionRulesInterface.StateConditioning
+        return DecisionRulesInterface.sample_action(rule, state, rng)
+
+    else
+        throw(ArgumentError(
+            "Generic runtime profile sampling does not support $(typeof(kind)) rules. Use a domain-specific helper for that conditioning kind."
+        ))
+    end
+end
+
 # ----------------------------------------------------------------------
-# Sampling helpers
+# Joint / profile sampling
 # ----------------------------------------------------------------------
 
-@inline function _sample_profile_action_impl(rules::Tuple,
-                                             game::Kernel.AbstractGame,
-                                             state,
-                                             rng::AbstractRNG,
-                                             query_action)
-    _validate_profile_length(rules, game)
+@inline function sample_action_tuple(profile::DecisionRuleProfile,
+                                     rng::AbstractRNG = Random.default_rng())
+    return ntuple(i -> DecisionRulesInterface.sample_action(profile[i], rng), length(profile))
+end
+
+@inline function _sample_joint_action_tuple(profile::Tuple, rng::AbstractRNG)
+    acts = ntuple(i -> DecisionRulesInterface.sample_action(profile[i], rng), length(profile))
+    return Kernel.joint_action(acts)
+end
+
+sample_joint_action(profile::DecisionRuleProfile,
+                    rng::AbstractRNG = Random.default_rng()) =
+    _sample_joint_action_tuple(profile.rules, rng)
+
+sample_joint_action(profile::Tuple{Vararg{DecisionRulesInterface.AbstractDecisionRule,N}},
+                    rng::AbstractRNG = Random.default_rng()) where {N} =
+    _sample_joint_action_tuple(profile, rng)
+
+function sample_joint_action(profile::Tuple, rng::AbstractRNG = Random.default_rng())
+    return sample_joint_action(DecisionRuleProfile(profile), rng)
+end
+
+"""
+Sample the current kernel action induced by a decision-rule profile at `(game, state)`.
+
+Supported generic conditioning kinds:
+- `NoConditioning`
+- `ObservationConditioning`
+- `StateConditioning`
+
+Other kinds, such as infoset-conditioned or history-conditioned rules, should use
+domain-specific helpers that know how to construct the relevant conditioning object.
+"""
+function sample_profile_action(profile::DecisionRuleProfile,
+                               game::Kernel.AbstractGame,
+                               state,
+                               rng::AbstractRNG = Random.default_rng())
+    require_profile_length(profile, game)
 
     nk = Kernel.node_kind(game, state)
 
     if nk == Kernel.DECISION
         p = Kernel.only_acting_player(game, state)
-        a = query_action(p, state, rng)
+        a = _query_runtime_action(profile[p], game, state, p, rng)
         return _check_legal_action(game, state, p, a)
 
     elseif nk == Kernel.SIMULTANEOUS
         aps = Tuple(Kernel.acting_players(game, state))
         acts = ntuple(i -> begin
             p = aps[i]
-            a = query_action(p, state, rng)
+            a = _query_runtime_action(profile[p], game, state, p, rng)
             _check_legal_action(game, state, p, a)
         end, length(aps))
         ja = Kernel.JointAction(acts)
@@ -193,54 +284,50 @@ end
     end
 end
 
-function sample_profile_action(profile::UnconditionedRuleProfile,
-                               game::Kernel.AbstractGame,
-                               state,
-                               rng::AbstractRNG = Random.default_rng())
-    return _sample_profile_action_impl(profile.rules, game, state, rng) do p, st, rr
-        DecisionRulesInterface.sample_action(profile.rules[p], rr)
+# ----------------------------------------------------------------------
+# Joint / profile probabilities and densities
+# ----------------------------------------------------------------------
+
+@inline function _joint_probability_tuple(profile::Tuple, actions::Tuple)
+    length(profile) == length(actions) ||
+        throw(ArgumentError("Profile and action tuple must have the same length."))
+    p = 1.0
+    @inbounds for i in eachindex(profile)
+        p *= DecisionRulesInterface.action_probability(profile[i], actions[i])
     end
+    return p
 end
 
-function sample_profile_action(profile::ObservationRuleProfile,
-                               game::Kernel.AbstractGame,
-                               state,
-                               rng::AbstractRNG = Random.default_rng())
-    return _sample_profile_action_impl(profile.rules, game, state, rng) do p, st, rr
-        obs = Kernel.observe(game, st, p)
-        DecisionRulesInterface.sample_action(profile.rules[p], obs, rr)
-    end
+joint_probability(profile::DecisionRuleProfile, actions::Tuple) =
+    _joint_probability_tuple(profile.rules, actions)
+
+joint_probability(profile::Tuple{Vararg{DecisionRulesInterface.AbstractDecisionRule,N}},
+                  actions::Tuple) where {N} =
+    _joint_probability_tuple(profile, actions)
+
+function joint_probability(profile::Tuple, actions::Tuple)
+    return joint_probability(DecisionRuleProfile(profile), actions)
 end
 
-function sample_profile_action(profile::StateRuleProfile,
-                               game::Kernel.AbstractGame,
-                               state,
-                               rng::AbstractRNG = Random.default_rng())
-    return _sample_profile_action_impl(profile.rules, game, state, rng) do p, st, rr
-        DecisionRulesInterface.sample_action(profile.rules[p], st, rr)
+@inline function _joint_density_tuple(profile::Tuple, actions::Tuple)
+    length(profile) == length(actions) ||
+        throw(ArgumentError("Profile and action tuple must have the same length."))
+    d = 1.0
+    @inbounds for i in eachindex(profile)
+        d *= DecisionRulesInterface.action_density(profile[i], actions[i])
     end
+    return d
 end
 
-function sample_profile_action(profile::POSGRuleProfile,
-                               game::Kernel.AbstractGame,
-                               state,
-                               rng::AbstractRNG = Random.default_rng())
-    POSG.require_valid_posg(game)
-    return _sample_profile_action_impl(profile.rules, game, state, rng) do p, st, rr
-        obs = Kernel.observe(game, st, p)
-        DecisionRulesInterface.sample_action(profile.rules[p], obs, rr)
-    end
-end
+joint_density(profile::DecisionRuleProfile, actions::Tuple) =
+    _joint_density_tuple(profile.rules, actions)
 
-function sample_profile_action(profile::DecPOMDPRuleProfile,
-                               game::Kernel.AbstractGame,
-                               state,
-                               rng::AbstractRNG = Random.default_rng())
-    POSG.require_valid_decpomdp(game)
-    return _sample_profile_action_impl(profile.rules, game, state, rng) do p, st, rr
-        obs = Kernel.observe(game, st, p)
-        DecisionRulesInterface.sample_action(profile.rules[p], obs, rr)
-    end
+joint_density(profile::Tuple{Vararg{DecisionRulesInterface.AbstractDecisionRule,N}},
+              actions::Tuple) where {N} =
+    _joint_density_tuple(profile, actions)
+
+function joint_density(profile::Tuple, actions::Tuple)
+    return joint_density(DecisionRuleProfile(profile), actions)
 end
 
 end
