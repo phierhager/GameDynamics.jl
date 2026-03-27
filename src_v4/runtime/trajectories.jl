@@ -1,6 +1,4 @@
-module Trajectories
-
-using ..Kernel
+module RuntimeTrajectories
 
 export AbstractTrajectoryRecord
 export AbstractTransition
@@ -49,12 +47,12 @@ abstract type AbstractTrajectory end
 # ----------------------------------------------------------------------
 
 """
-Interaction record for stateless / unconditioned settings.
+Interaction record for stateless / unconditioned control.
 
 Best match:
 - bandits
 - stateless repeated play
-- `UnconditionedPolicy`
+- unconditioned decision rules
 """
 struct BanditStep{A,R} <: AbstractTransition
     action::A
@@ -63,11 +61,11 @@ struct BanditStep{A,R} <: AbstractTransition
 end
 
 """
-Transition for state-conditioned RL.
+Transition for state-conditioned control.
 
 Best match:
 - MDP-style control
-- `StatePolicy`
+- state-conditioned decision rules
 """
 struct StateTransition{S,A,R} <: AbstractTransition
     state::S
@@ -78,11 +76,11 @@ struct StateTransition{S,A,R} <: AbstractTransition
 end
 
 """
-Transition for observation-conditioned RL / partial-observation control.
+Transition for observation-conditioned / partial-observation control.
 
 Best match:
 - POMDP-style control
-- `ObservationPolicy`
+- observation-conditioned decision rules
 """
 struct ObservationTransition{O,A,R} <: AbstractTransition
     observation::O
@@ -96,7 +94,7 @@ end
 Transition carrying both latent state and observation.
 
 Best match:
-- training with simulator state access while the acting policy uses observations
+- training with simulator state access while the acting rule uses observations
 - actor-critic / model-based diagnostics in partially observed settings
 """
 struct StateObservationTransition{S,O,A,R} <: AbstractTransition
@@ -117,7 +115,7 @@ end
 Joint stateless interaction.
 
 Best match:
-- `UnconditionedPolicyProfile`
+- unconditioned decision-rule profiles
 - repeated-play / matrix-game logs
 """
 struct JointBanditStep{A,R} <: AbstractTransition
@@ -130,7 +128,7 @@ end
 Joint transition with full state.
 
 Best match:
-- `StatePolicyProfile`
+- state-conditioned decision-rule profiles
 - Markov games with state-based centralized training/control
 """
 struct JointStateTransition{S,A,R} <: AbstractTransition
@@ -145,9 +143,8 @@ end
 Joint transition with local/joint observations.
 
 Best match:
-- `ObservationPolicyProfile`
-- canonical `POSGProfile`
-- canonical `DecPOMDPProfile`
+- observation-conditioned decision-rule profiles
+- POSG / Dec-POMDP style decentralized execution
 """
 struct JointObservationTransition{O,A,R} <: AbstractTransition
     observation::O
@@ -162,7 +159,7 @@ Joint transition carrying both state and local/joint observations.
 
 Best match:
 - centralized-training decentralized-execution pipelines
-- POSG / Dec-POMDP training with simulator state access
+- partially observed multi-agent training with simulator state access
 """
 struct JointStateObservationTransition{S,O,A,R} <: AbstractTransition
     state::S

@@ -1,4 +1,4 @@
-module DecisionExecution
+module RuleExecution
 
 using Random
 

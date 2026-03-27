@@ -1,4 +1,4 @@
-module Runtime
+module RuntimeEnvironment
 
 using Random
 using ..Kernel
@@ -89,8 +89,8 @@ function step_with_info(game::Kernel.AbstractGame,
                         action,
                         rng::AbstractRNG = Random.default_rng())
     next_state, rewards = Kernel.step(game, state, action, rng)
-    terminated = Kernel.is_terminal(game, next_state)
-    return next_state, rewards, terminated, default_step_info(game)
+    term = Kernel.is_terminal(game, next_state)
+    return next_state, rewards, term, default_step_info(game)
 end
 
 # ----------------------------------------------------------------------
