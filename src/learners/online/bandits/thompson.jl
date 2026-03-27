@@ -21,7 +21,7 @@ struct GaussianThompson{T} <: LearningInterfaces.AbstractLearner
         n_actions > 0 || throw(ArgumentError("n_actions must be positive."))
         prior_precision > zero(T) || throw(ArgumentError("prior_precision must be positive."))
         obs_precision > zero(T) || throw(ArgumentError("obs_precision must be positive."))
-        return GaussianThompson{T}(prior_mean, prior_precision, obs_precision, n_actions)
+        return new{T}(prior_mean, prior_precision, obs_precision, n_actions)
     end
 end
 
@@ -30,7 +30,7 @@ mutable struct GaussianThompsonState{T} <: LearningInterfaces.AbstractLearnerSta
     posterior_precision::Vector{T}
 
     function GaussianThompsonState(l::GaussianThompson{T}) where {T}
-        return GaussianThompsonState(fill(l.prior_mean, l.n_actions),
+        return new{T}(fill(l.prior_mean, l.n_actions),
                                     fill(l.prior_precision, l.n_actions))
     end
 end

@@ -15,7 +15,7 @@ struct Hedge{T} <: LearningInterfaces.AbstractLearner
     function Hedge(eta::T, n_actions::Int) where {T}
         n_actions > 0 || throw(ArgumentError("n_actions must be positive."))
         eta > zero(T) || throw(ArgumentError("eta must be positive."))
-        return Hedge{T}(eta, n_actions)
+        return new{T}(eta, n_actions)
     end
 
 end
@@ -25,7 +25,7 @@ mutable struct HedgeState{T} <: LearningInterfaces.AbstractLearnerState
     probs::Vector{T}
     
     function HedgeState(l::Hedge{T}) where {T}
-        return HedgeState(zeros(T, l.n_actions), fill(one(T) / l.n_actions, l.n_actions))
+        return new{T}(zeros(T, l.n_actions), fill(one(T) / l.n_actions, l.n_actions))
     end
 end
 

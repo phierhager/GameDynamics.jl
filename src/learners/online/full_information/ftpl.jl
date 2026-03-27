@@ -15,7 +15,7 @@ struct FTPL{T} <: LearningInterfaces.AbstractLearner
     function FTPL(eta::T, n_actions::Int) where {T}
         n_actions > 0 || throw(ArgumentError("n_actions must be positive."))
         eta > zero(T) || throw(ArgumentError("eta must be positive."))
-        return FTPL{T}(eta, n_actions)
+        return new{T}(eta, n_actions)
     end
 end
 
@@ -23,15 +23,9 @@ mutable struct FTPLState{T} <: LearningInterfaces.AbstractLearnerState
     cumulative_utilities::Vector{T}
     scratch::Vector{T}
 
-    function FTPL(eta::T, n_actions::Int) where {T}
-        n_actions > 0 || throw(ArgumentError("n_actions must be positive."))
-        eta > zero(T) || throw(ArgumentError("eta must be positive."))
-        return FTPL{T}(eta, n_actions)
+    function FTPLState(l::FTPL{T}) where {T}
+        return new{T}(zeros(T, l.n_actions), zeros(T, l.n_actions))
     end
-end
-
-function FTPLState(l::FTPL{T}) where {T}
-    return FTPLState(zeros(T, l.n_actions), zeros(T, l.n_actions))
 end
 
 Learning.learner_family(::FTPL) = :full_information

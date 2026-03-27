@@ -1,5 +1,7 @@
 module Encodings
 
+import Base: sizehint!
+
 export DenseEncoder
 export IdentityIntEncoder
 export DenseIntRangeEncoder
@@ -14,8 +16,8 @@ end
 DenseEncoder{K}() where {K} = DenseEncoder(Dict{K,Int}(), K[])
 
 function sizehint!(enc::DenseEncoder, n::Int)
-    sizehint!(enc.to_id, n)
-    sizehint!(enc.from_id, n)
+    Base.sizehint!(enc.to_id, n)
+    Base.sizehint!(enc.from_id, n)
     return enc
 end
 

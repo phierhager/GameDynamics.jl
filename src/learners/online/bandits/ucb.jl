@@ -15,7 +15,7 @@ struct UCB1{T} <: LearningInterfaces.AbstractLearner
     function UCB1(c::T, n_actions::Int) where {T}
         n_actions > 0 || throw(ArgumentError("n_actions must be positive."))
         c >= zero(T) || throw(ArgumentError("c must be nonnegative."))
-        return UCB1{T}(c, n_actions)
+        return new{T}(c, n_actions)
     end
 end
 
@@ -25,7 +25,7 @@ mutable struct UCB1State{T} <: LearningInterfaces.AbstractLearnerState
     round::Int
 
     function UCB1State(l::UCB1{T}) where {T}
-        return UCB1State(zeros(Int, l.n_actions), zeros(T, l.n_actions), 0)
+        return new{T}(zeros(Int, l.n_actions), zeros(T, l.n_actions), 0)
     end
 end
 

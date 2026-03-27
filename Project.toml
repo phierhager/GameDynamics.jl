@@ -1,4 +1,5 @@
 name = "GameLab"
+uuid = "04b17e02-d67e-4a57-8d8d-071d600b6e87"
 version = "0.1.0"
 
 [deps]

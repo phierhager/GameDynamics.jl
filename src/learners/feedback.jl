@@ -15,6 +15,8 @@ export realized_utility
 export observation
 export utility_vector
 export gradient
+export trajectory
+export return_value
 export is_full_information
 export is_bandit_feedback
 export is_gradient_feedback
@@ -75,6 +77,9 @@ observation(f::TrajectoryFeedback) = f.observation
 
 utility_vector(f::FullInformationFeedback) = f.utility_vector
 gradient(f::GradientFeedback) = f.gradient
+
+trajectory(f::TrajectoryFeedback) = f.trajectory
+return_value(f::TrajectoryFeedback) = f.return_value
 
 is_full_information(::AbstractFeedback) = false
 is_full_information(::FullInformationFeedback) = true

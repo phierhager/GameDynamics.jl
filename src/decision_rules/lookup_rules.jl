@@ -42,14 +42,12 @@ Assumes contexts are encoded as 1-based integers.
 """
 struct DenseLookupRule{
     CK<:DecisionRulesInterface.AbstractContextKind,
-    R<:DecisionRulesInterface.AbstractDecisionRule,
-    T<:Tuple{Vararg{R}},
+    T<:Tuple,
     ISC<:DecisionRulesInterface.AbstractInternalStateClass,
 } <: DecisionRulesInterface.AbstractDecisionRule
     table::T
     internal_state::ISC
 end
-
 """
 Vector-backed dense lookup rule for larger integer-indexed maps.
 Assumes contexts are encoded as 1-based integers.
@@ -73,12 +71,13 @@ TableLookupRule(::Type{CK}, table::T;
     TableLookupRule{CK,K,R,T,typeof(internal_state)}(table, internal_state)
 
 function DenseLookupRule(::Type{CK}, table::T;
-                         internal_state::DecisionRulesInterface.AbstractInternalStateClass = DecisionRulesInterface.Stateless()) where {CK<:DecisionRulesInterface.AbstractContextKind,R,T<:Tuple{Vararg{R}}}
+                         internal_state::DecisionRulesInterface.AbstractInternalStateClass = DecisionRulesInterface.Stateless()) where
+    {CK<:DecisionRulesInterface.AbstractContextKind,T<:Tuple}
     @inbounds for i in eachindex(table)
         table[i] isa DecisionRulesInterface.AbstractDecisionRule ||
             throw(ArgumentError("DenseLookupRule entries must be decision rules. Entry $i has type $(typeof(table[i]))."))
     end
-    return DenseLookupRule{CK,R,T,typeof(internal_state)}(table, internal_state)
+    return DenseLookupRule{CK,T,typeof(internal_state)}(table, internal_state)
 end
 
 function DenseVectorLookupRule(::Type{CK}, table::V;
@@ -99,7 +98,7 @@ DecisionRulesInterface.internal_state_class(::Type{<:CallableLookupRule{CK,F,ISC
     ISC()
 DecisionRulesInterface.internal_state_class(::Type{<:TableLookupRule{CK,K,R,T,ISC}}) where {CK,K,R,T,ISC<:DecisionRulesInterface.AbstractInternalStateClass} =
     ISC()
-DecisionRulesInterface.internal_state_class(::Type{<:DenseLookupRule{CK,R,T,ISC}}) where {CK,R,T,ISC<:DecisionRulesInterface.AbstractInternalStateClass} =
+DecisionRulesInterface.internal_state_class(::Type{<:DenseLookupRule{CK,T,ISC}}) where {CK,R,T,ISC<:DecisionRulesInterface.AbstractInternalStateClass} =
     ISC()
 DecisionRulesInterface.internal_state_class(::Type{<:DenseVectorLookupRule{CK,R,V,ISC}}) where {CK,R,V,ISC<:DecisionRulesInterface.AbstractInternalStateClass} =
     ISC()

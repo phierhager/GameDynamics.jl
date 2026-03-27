@@ -17,7 +17,7 @@ struct EXP3{T} <: LearningInterfaces.AbstractLearner
         n_actions > 0 || throw(ArgumentError("n_actions must be positive."))
         zero(T) <= gamma <= one(T) || throw(ArgumentError("gamma must be in [0,1]."))
         eta > zero(T) || throw(ArgumentError("eta must be positive."))
-        return EXP3{T}(gamma, eta, n_actions)
+        return new{T}(gamma, eta, n_actions)
     end
 end
 
@@ -26,7 +26,7 @@ mutable struct EXP3State{T} <: LearningInterfaces.AbstractLearnerState
     probs::Vector{T}
 
     function EXP3State(l::EXP3{T}) where {T}
-        return EXP3State(zeros(T, l.n_actions), fill(one(T) / l.n_actions, l.n_actions))
+        return new{T}(zeros(T, l.n_actions), fill(one(T) / l.n_actions, l.n_actions))
     end
 end
 

@@ -15,7 +15,7 @@ struct EntropicFTRL{T} <: LearningInterfaces.AbstractLearner
     function EntropicFTRL(eta::T, n_actions::Int) where {T}
         n_actions > 0 || throw(ArgumentError("n_actions must be positive."))
         eta > zero(T) || throw(ArgumentError("eta must be positive."))
-        return EntropicFTRL{T}(eta, n_actions)
+        return new{T}(eta, n_actions)
     end
 end
 
@@ -24,7 +24,7 @@ mutable struct EntropicFTRLState{T} <: LearningInterfaces.AbstractLearnerState
     probs::Vector{T}
 
     function EntropicFTRLState(l::EntropicFTRL{T}) where {T}
-        return EntropicFTRLState(zeros(T, l.n_actions), fill(one(T) / l.n_actions, l.n_actions))
+        return new{T}(zeros(T, l.n_actions), fill(one(T) / l.n_actions, l.n_actions))
     end
 end
 
