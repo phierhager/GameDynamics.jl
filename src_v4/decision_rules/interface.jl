@@ -4,20 +4,21 @@ using Random
 
 export AbstractDecisionRule
 
-export AbstractConditioningKind
-export NoConditioning
-export ObservationConditioning
-export StateConditioning
-export HistoryConditioning
-export InfosetConditioning
+export AbstractContextKind
+export NoContext
+export StateContext
+export ObservationContext
+export HistoryContext
+export InfosetContext
+export CustomContext
 
-export AbstractMemoryClass
-export Memoryless
-export HistoryDependent
-export FiniteMemory
+export AbstractInternalStateClass
+export Stateless
+export Stateful
+export FiniteStateController
 
-export conditioning_kind
-export memory_class
+export context_kind
+export internal_state_class
 
 export support
 export probabilities
@@ -34,82 +35,105 @@ Stable public root for decision rules.
 
 A decision rule is the library's unified action-selection abstraction. It covers
 what RL often calls a policy and what game theory often calls a strategy.
+
+This subsystem is intentionally representation-focused:
+- it describes how rules are represented and queried
+- it does not define where contexts come from
+- it does not define how internal controller state is threaded across time
+
+Those runtime responsibilities belong elsewhere.
 """
 abstract type AbstractDecisionRule end
 
 # ----------------------------------------------------------------------
-# Conditioning kinds
+# Context kinds
 # ----------------------------------------------------------------------
 
-abstract type AbstractConditioningKind end
+"""
+Trait axis describing what kind of context a decision rule expects at query time.
+"""
+abstract type AbstractContextKind end
 
 """
-Rule takes no conditioning input at query time.
+Rule takes no context at query time.
 """
-struct NoConditioning <: AbstractConditioningKind end
-
-"""
-Rule is queried on the current observation.
-"""
-struct ObservationConditioning <: AbstractConditioningKind end
+struct NoContext <: AbstractContextKind end
 
 """
 Rule is queried on the true underlying state.
 """
-struct StateConditioning <: AbstractConditioningKind end
+struct StateContext <: AbstractContextKind end
+
+"""
+Rule is queried on the current observation.
+"""
+struct ObservationContext <: AbstractContextKind end
 
 """
 Rule is queried on a history object.
 """
-struct HistoryConditioning <: AbstractConditioningKind end
+struct HistoryContext <: AbstractContextKind end
 
 """
 Rule is queried on an infoset-like object.
 """
-struct InfosetConditioning <: AbstractConditioningKind end
+struct InfosetContext <: AbstractContextKind end
+
+"""
+Rule is queried on a user-defined custom context object.
+"""
+struct CustomContext <: AbstractContextKind end
 
 # ----------------------------------------------------------------------
-# Memory classes
+# Internal controller-state classes
 # ----------------------------------------------------------------------
 
-abstract type AbstractMemoryClass end
+"""
+Trait axis describing whether the rule maintains internal controller state beyond
+the supplied query context.
+
+This is currently descriptive metadata, not an execution protocol.
+"""
+abstract type AbstractInternalStateClass end
 
 """
-Rule is memoryless relative to its declared conditioning object.
+Rule has no internal controller state beyond the supplied query context.
 """
-struct Memoryless <: AbstractMemoryClass end
+struct Stateless <: AbstractInternalStateClass end
 
 """
-Rule may depend on history in an unrestricted way.
+Rule may maintain unrestricted internal controller state.
 """
-struct HistoryDependent <: AbstractMemoryClass end
+struct Stateful <: AbstractInternalStateClass end
 
 """
-Reserved stable extension point for finite-memory rules.
+Rule maintains finite internal controller state.
+
+This is currently descriptive metadata, not a concrete controller API.
 """
-struct FiniteMemory <: AbstractMemoryClass end
+struct FiniteStateController <: AbstractInternalStateClass end
 
 # ----------------------------------------------------------------------
 # Trait declarations
 # ----------------------------------------------------------------------
 
 """
-Return the declared conditioning kind for a decision-rule type.
+Return the declared context kind for a decision-rule type.
 """
-function conditioning_kind(::Type{<:AbstractDecisionRule})
-    throw(MethodError(conditioning_kind, (AbstractDecisionRule,)))
+function context_kind(::Type{<:AbstractDecisionRule})
+    throw(MethodError(context_kind, (AbstractDecisionRule,)))
 end
 
-conditioning_kind(rule::AbstractDecisionRule) = conditioning_kind(typeof(rule))
+context_kind(rule::AbstractDecisionRule) = context_kind(typeof(rule))
 
 """
-Return the declared memory class for a decision-rule type.
+Return the declared internal-state class for a decision-rule type.
 """
-function memory_class(::Type{<:AbstractDecisionRule})
-    throw(MethodError(memory_class, (AbstractDecisionRule,)))
+function internal_state_class(::Type{<:AbstractDecisionRule})
+    throw(MethodError(internal_state_class, (AbstractDecisionRule,)))
 end
 
-memory_class(rule::AbstractDecisionRule) = memory_class(typeof(rule))
+internal_state_class(rule::AbstractDecisionRule) = internal_state_class(typeof(rule))
 
 # ----------------------------------------------------------------------
 # Capability interfaces
@@ -117,6 +141,8 @@ memory_class(rule::AbstractDecisionRule) = memory_class(typeof(rule))
 
 """
 Return the finite support of a rule, when such a notion is available.
+
+For some non-enumerated rules this may instead denote an admissible domain.
 """
 function support end
 
@@ -129,24 +155,23 @@ function probabilities end
 Sample an action from the rule.
 
 Expected signatures include:
-- `sample_action(rule, rng)` for unconditioned rules
-- `sample_action(rule, conditioning, rng)` for conditioned rules
+- `sample_action(rule, rng)` for `NoContext` rules
+- `sample_action(rule, context, rng)` for contextual rules
 """
 function sample_action end
 
 sample_action(rule::AbstractDecisionRule) =
     sample_action(rule, Random.default_rng())
 
-sample_action(rule::AbstractDecisionRule, conditioning) =
-    sample_action(rule, conditioning, Random.default_rng())
+sample_action(rule::AbstractDecisionRule, context) =
+    sample_action(rule, context, Random.default_rng())
 
 """
 Return the action probability for the queried input.
 
 Examples:
 - `action_probability(rule, action)`
-- `action_probability(rule, observation, action)`
-- `action_probability(rule, infoset, action)`
+- `action_probability(rule, context, action)`
 """
 function action_probability end
 
@@ -155,7 +180,7 @@ Return the action density for the queried input, when density is defined.
 
 Examples:
 - `action_density(rule, action)`
-- `action_density(rule, state, action)`
+- `action_density(rule, context, action)`
 """
 function action_density end
 
