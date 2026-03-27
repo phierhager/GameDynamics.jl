@@ -255,6 +255,10 @@ function _game_semantics_decpomdp(game::Kernel.AbstractGame)
         first(sec for sec in posg_report.sections if sec.name == :game_semantics) |>
         sec -> _all_ok(sec.issues)
 
+    shared_reward_ok =
+        spec.reward_sharing == Spec.SHARED_REWARD ||
+        spec.reward_sharing == Spec.IDENTICAL_REWARD
+
     issues = ValidationIssue[
         _issue(
             :base_posg_semantics,
@@ -272,12 +276,9 @@ function _game_semantics_decpomdp(game::Kernel.AbstractGame)
 
         _issue(
             :shared_reward_structure,
-            spec.reward_sharing == Spec.SHARED_REWARD ||
-            spec.reward_sharing == Spec.IDENTICAL_REWARD,
-            (spec.reward_sharing == Spec.SHARED_REWARD ||
-             spec.reward_sharing == Spec.IDENTICAL_REWARD) ?
-                "Reward-sharing metadata is compatible with cooperative DecPOMDP semantics." :
-                "DecPOMDP semantics expect shared/identical reward metadata."
+            shared_reward_ok,
+            "Reward-sharing metadata is compatible with cooperative DecPOMDP semantics.",
+            "DecPOMDP semantics expect shared/identical reward metadata."
         ),
 
         _issue(

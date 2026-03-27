@@ -5,40 +5,23 @@ using ..Kernel
 using ..Exact
 using ..Strategies
 using ..Interfaces
+using ..Infosets
 
-export infoset
 export local_behavior
 export behavior_action_probability
 export sample_behavior_action
 export sample_behavior_profile_action
 export is_behavior_defined
 
-@inline uses_information_state(game::Kernel.AbstractGame) =
-    Interfaces.supports_interface(game, Interfaces.InformationStateInterface)
-
-"""
-Default infoset proxy.
-
-If the game declares `Interfaces.InformationStateInterface`, validate and use
-`Exact.information_state`. Otherwise fall back to `Kernel.observe`.
-"""
-function infoset(game::Kernel.AbstractGame, state, player::Int)
-    if uses_information_state(game)
-        Interfaces.ensure_interface(game, Interfaces.InformationStateInterface)
-        return Exact.information_state(game, state, player)
-    end
-    return Kernel.observe(game, state, player)
-end
-
 local_behavior(strategy, game::Kernel.AbstractGame, state, player::Int) =
-    Strategies.local_strategy(strategy, infoset(game, state, player))
+    Strategies.local_strategy(strategy, Infosets.infoset(game, state, player))
 
 behavior_action_probability(strategy, game::Kernel.AbstractGame, state, player::Int, action) =
-    Strategies.probability(strategy, infoset(game, state, player), action)
+    Strategies.probability(strategy, Infosets.infoset(game, state, player), action)
 
 sample_behavior_action(strategy, game::Kernel.AbstractGame, state, player::Int,
                        rng::AbstractRNG = Random.default_rng()) =
-    Strategies.sample_action(strategy, infoset(game, state, player), rng)
+    Strategies.sample_action(strategy, Infosets.infoset(game, state, player), rng)
 
 function sample_behavior_profile_action(profile::Tuple{Vararg{Strategies.AbstractStrategy,N}},
                                         game::Kernel.AbstractGame,
