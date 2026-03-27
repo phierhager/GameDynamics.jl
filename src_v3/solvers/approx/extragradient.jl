@@ -1,6 +1,6 @@
-module FirstOrderMatrixGameSolvers
+module ExtragradientSolvers
 
-using ..CompiledNormalFormModels
+using ..TabularMatrixGames
 using ..ApproxSolverCommon
 
 export SimplexProjectionWorkspace
@@ -31,7 +31,7 @@ mutable struct ExtragradientWorkspace
     wy::SimplexProjectionWorkspace
 end
 
-function ExtragradientWorkspace(game::CompiledNormalFormModels.CompiledMatrixGame)
+function ExtragradientWorkspace(game::TabularMatrixGames.TabularMatrixGame)
     m = game.n_actions_p1
     n = game.n_actions_p2
     return ExtragradientWorkspace(
@@ -90,11 +90,11 @@ function projected_simplex!(x::Vector{Float64}, ws::SimplexProjectionWorkspace)
     return x
 end
 
-function extragradient_zero_sum!(game::CompiledNormalFormModels.CompiledMatrixGame,
+function extragradient_zero_sum!(game::TabularMatrixGames.TabularMatrixGame,
                                  ws::ExtragradientWorkspace;
                                  n_iter::Int = 5000,
                                  η::Float64 = 0.1)
-    ApproxSolverCommon.require_compiled_2p_matrix_game(game)
+    ApproxSolverCommon.require_tabular_2p_matrix_game(game)
 
     U = game.payoff_p1
     x = ws.x
@@ -172,7 +172,7 @@ function extragradient_zero_sum!(game::CompiledNormalFormModels.CompiledMatrixGa
     return ws
 end
 
-function extragradient_zero_sum(game::CompiledNormalFormModels.CompiledMatrixGame;
+function extragradient_zero_sum(game::TabularMatrixGames.TabularMatrixGame;
                                 n_iter::Int = 5000,
                                 η::Float64 = 0.1,
                                 workspace::ExtragradientWorkspace = ExtragradientWorkspace(game))
@@ -181,7 +181,7 @@ function extragradient_zero_sum(game::CompiledNormalFormModels.CompiledMatrixGam
     return workspace.x, workspace.y
 end
 
-ApproxSolverCommon.run_solver!(game::CompiledNormalFormModels.CompiledMatrixGame,
+ApproxSolverCommon.run_solver!(game::TabularMatrixGames.TabularMatrixGame,
                                ws::ExtragradientWorkspace;
                                n_iter::Int = 1_000,
                                η::Float64 = 0.1) =

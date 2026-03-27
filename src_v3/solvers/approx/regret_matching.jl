@@ -1,6 +1,6 @@
 module RegretMatchingSolvers
 
-using ..CompiledNormalFormModels
+using ..TabularMatrixGames
 using ..ApproxSolverCommon
 
 export RegretMatchingWorkspace
@@ -23,7 +23,7 @@ mutable struct RegretMatchingWorkspace
     util2::Vector{Float64}
 end
 
-function RegretMatchingWorkspace(game::CompiledNormalFormModels.CompiledMatrixGame)
+function RegretMatchingWorkspace(game::TabularMatrixGames.TabularMatrixGame)
     m = game.n_actions_p1
     n = game.n_actions_p2
     return RegretMatchingWorkspace(
@@ -102,10 +102,10 @@ function current_strategy(regrets::Vector{Float64})
     return current_strategy!(dest, regrets)
 end
 
-function regret_matching!(game::CompiledNormalFormModels.CompiledMatrixGame,
+function regret_matching!(game::TabularMatrixGames.TabularMatrixGame,
                           workspace::RegretMatchingWorkspace;
                           n_iter::Int = 10000)
-    ApproxSolverCommon.require_compiled_2p_matrix_game(game)
+    ApproxSolverCommon.require_tabular_2p_matrix_game(game)
 
     U1 = game.payoff_p1
     U2 = game.payoff_p2
@@ -164,14 +164,14 @@ function regret_matching!(game::CompiledNormalFormModels.CompiledMatrixGame,
     return workspace
 end
 
-function regret_matching(game::CompiledNormalFormModels.CompiledMatrixGame;
+function regret_matching(game::TabularMatrixGames.TabularMatrixGame;
                          n_iter::Int = 10000,
                          workspace::RegretMatchingWorkspace = RegretMatchingWorkspace(game))
     reset!(workspace)
     return regret_matching!(game, workspace; n_iter = n_iter)
 end
 
-ApproxSolverCommon.run_solver!(game::CompiledNormalFormModels.CompiledMatrixGame,
+ApproxSolverCommon.run_solver!(game::TabularMatrixGames.TabularMatrixGame,
                                ws::RegretMatchingWorkspace;
                                n_iter::Int = 1_000) =
     regret_matching!(game, ws; n_iter = n_iter)

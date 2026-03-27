@@ -1,7 +1,7 @@
 module MCCFRSolvers
 
 using Random
-using ..CompiledExtensiveModels
+using ..TabularExtensiveTrees
 using ..CFRSolvers
 using ..ApproxSolverCommon
 
@@ -22,7 +22,7 @@ mutable struct ExternalSamplingWorkspace{R<:AbstractRNG}
     averaging_delay::Int
 end
 
-ExternalSamplingWorkspace(model::CompiledExtensiveModels.CompiledExtensiveGame;
+ExternalSamplingWorkspace(model::TabularExtensiveTrees.TabularExtensiveTree;
                           rng::R = Random.default_rng(),
                           averaging_delay::Int = 0) where {R<:AbstractRNG} =
     ExternalSamplingWorkspace{R}(CFRSolvers.CFRWorkspace(model), rng, 0, averaging_delay)
@@ -41,14 +41,14 @@ ExternalSamplingWorkspace(model::CompiledExtensiveModels.CompiledExtensiveGame;
     return last(eachindex(probs))
 end
 
-@inline function _terminal_utility(model::CompiledExtensiveModels.CompiledExtensiveGame,
+@inline function _terminal_utility(model::TabularExtensiveTrees.TabularExtensiveTree,
                                    node::Int,
                                    player::Int)
     off = model.reward_first[node]
     return model.terminal_payoffs[off + player - 1]
 end
 
-function _external_sampling_traverse!(model::CompiledExtensiveModels.CompiledExtensiveGame,
+function _external_sampling_traverse!(model::TabularExtensiveTrees.TabularExtensiveTree,
                                       ws::ExternalSamplingWorkspace,
                                       node::Int,
                                       updating_player::Int,
@@ -59,16 +59,16 @@ function _external_sampling_traverse!(model::CompiledExtensiveModels.CompiledExt
                                       plus::Bool = false)
     nk = model.node_kind[node]
 
-    if nk == CompiledExtensiveModels.NODE_TERMINAL
+    if nk == TabularExtensiveTrees.NODE_TERMINAL
         return _terminal_utility(model, node, updating_player)
 
-    elseif nk == CompiledExtensiveModels.NODE_CHANCE
-        pr = CompiledExtensiveModels.chance_probabilities(model, node)
+    elseif nk == TabularExtensiveTrees.NODE_CHANCE
+        pr = TabularExtensiveTrees.chance_probabilities(model, node)
         j = _sample_index(pr, ws.rng)
         slot = model.node_first[node] + j - 1
         return _external_sampling_traverse!(model, ws, model.child[slot], updating_player, p1, p2, pc * pr[j], avg_coeff; plus = plus)
 
-    elseif nk == CompiledExtensiveModels.NODE_SIMULTANEOUS
+    elseif nk == TabularExtensiveTrees.NODE_SIMULTANEOUS
         throw(ArgumentError("Simultaneous nodes are not supported in MCCFR traversal."))
 
     else
@@ -141,7 +141,7 @@ function _external_sampling_traverse!(model::CompiledExtensiveModels.CompiledExt
     end
 end
 
-function mccfr_iteration!(model::CompiledExtensiveModels.CompiledExtensiveGame,
+function mccfr_iteration!(model::TabularExtensiveTrees.TabularExtensiveTree,
                           ws::ExternalSamplingWorkspace)
     ApproxSolverCommon.require_supported_2p_tree_model(model)
 
@@ -152,7 +152,7 @@ function mccfr_iteration!(model::CompiledExtensiveModels.CompiledExtensiveGame,
     return ws
 end
 
-function mccfrplus_iteration!(model::CompiledExtensiveModels.CompiledExtensiveGame,
+function mccfrplus_iteration!(model::TabularExtensiveTrees.TabularExtensiveTree,
                               ws::ExternalSamplingWorkspace)
     ApproxSolverCommon.require_supported_2p_tree_model(model)
 
@@ -166,7 +166,7 @@ function mccfrplus_iteration!(model::CompiledExtensiveModels.CompiledExtensiveGa
     return ws
 end
 
-function run_mccfr!(model::CompiledExtensiveModels.CompiledExtensiveGame,
+function run_mccfr!(model::TabularExtensiveTrees.TabularExtensiveTree,
                     ws::ExternalSamplingWorkspace = ExternalSamplingWorkspace(model);
                     n_iter::Int = 10_000)
     ApproxSolverCommon.require_supported_2p_tree_model(model)
@@ -176,7 +176,7 @@ function run_mccfr!(model::CompiledExtensiveModels.CompiledExtensiveGame,
     return ws
 end
 
-function run_mccfrplus!(model::CompiledExtensiveModels.CompiledExtensiveGame,
+function run_mccfrplus!(model::TabularExtensiveTrees.TabularExtensiveTree,
                         ws::ExternalSamplingWorkspace = ExternalSamplingWorkspace(model);
                         n_iter::Int = 10_000)
     ApproxSolverCommon.require_supported_2p_tree_model(model)
@@ -186,26 +186,26 @@ function run_mccfrplus!(model::CompiledExtensiveModels.CompiledExtensiveGame,
     return ws
 end
 
-function outcome_sampling_iteration!(model::CompiledExtensiveModels.CompiledExtensiveGame,
+function outcome_sampling_iteration!(model::TabularExtensiveTrees.TabularExtensiveTree,
                                      ws::ExternalSamplingWorkspace)
     ApproxSolverCommon.require_supported_2p_tree_model(model)
     throw(ArgumentError("Outcome-sampling MCCFR is temporarily disabled here. The previous implementation was not solver-grade. Re-enable only with a fully validated sampled-counterfactual update."))
 end
 
-function outcome_sampling_plus_iteration!(model::CompiledExtensiveModels.CompiledExtensiveGame,
+function outcome_sampling_plus_iteration!(model::TabularExtensiveTrees.TabularExtensiveTree,
                                           ws::ExternalSamplingWorkspace)
     ApproxSolverCommon.require_supported_2p_tree_model(model)
     throw(ArgumentError("Outcome-sampling MCCFR+ is temporarily disabled here. The previous implementation was not solver-grade. Re-enable only with a fully validated sampled-counterfactual update."))
 end
 
-function run_outcome_sampling_mccfr!(model::CompiledExtensiveModels.CompiledExtensiveGame,
+function run_outcome_sampling_mccfr!(model::TabularExtensiveTrees.TabularExtensiveTree,
                                      ws::ExternalSamplingWorkspace = ExternalSamplingWorkspace(model);
                                      n_iter::Int = 10_000)
     ApproxSolverCommon.require_supported_2p_tree_model(model)
     throw(ArgumentError("Outcome-sampling MCCFR is temporarily disabled here."))
 end
 
-function run_outcome_sampling_mccfrplus!(model::CompiledExtensiveModels.CompiledExtensiveGame,
+function run_outcome_sampling_mccfrplus!(model::TabularExtensiveTrees.TabularExtensiveTree,
                                          ws::ExternalSamplingWorkspace = ExternalSamplingWorkspace(model);
                                          n_iter::Int = 10_000)
     ApproxSolverCommon.require_supported_2p_tree_model(model)

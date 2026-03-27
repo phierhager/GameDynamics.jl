@@ -7,23 +7,16 @@ import MathOptInterface as MOI
 using ..Kernel
 using ..Exact
 using ..Encodings
-using ..CompiledMarkovModels
+using ..TabularMarkovGames
+using ..TabularCompile
 
 export shapley_value_iteration_zero_sum
-
-# ----------------------------------------------------------------------
-# Generic transition-kernel helpers
-# Expected transition-kernel entry format:
-#   (next_state, prob, reward)
-# where reward is scalar or tuple-like.
-# ----------------------------------------------------------------------
 
 @inline _next_state(entry) = entry[1]
 @inline _prob(entry) = entry[2]
 @inline _reward(entry) = entry[3]
 @inline _scalar_reward(r) = r isa Real ? Float64(r) : Float64(r[1])
 
-@inline _state_index(idx::AbstractDict, s) = idx[s]
 @inline _state_index(enc::Encodings.DenseEncoder, s) = Encodings.encode(enc, s)
 
 function _build_state_index(states)
@@ -35,20 +28,6 @@ function _build_state_index(states)
     end
     return enc
 end
-
-@inline _action_count(xs::Base.OneTo) = length(xs)
-@inline _action_count(xs::AbstractVector) = length(xs)
-@inline _action_count(xs::Tuple) = length(xs)
-@inline _action_count(xs) = length(collect(xs))
-
-@inline _materialize_actions(xs::Base.OneTo) = xs
-@inline _materialize_actions(xs::AbstractVector) = xs
-@inline _materialize_actions(xs::Tuple) = xs
-@inline _materialize_actions(xs) = collect(xs)
-
-# ----------------------------------------------------------------------
-# Compiled 2-player zero-sum Markov games via Shapley iteration
-# ----------------------------------------------------------------------
 
 mutable struct _StageLPModel
     model::Model
@@ -104,12 +83,12 @@ function _solve_stage_value!(ws::_StageLPWorkspace, m::Int, n::Int)
 
     optimize!(lpm.model)
     termination_status(lpm.model) == MOI.OPTIMAL ||
-        error("Stage LP failed during compiled Shapley iteration.")
+        error("Stage LP failed during Shapley iteration.")
 
     return objective_value(lpm.model)
 end
 
-function shapley_value_iteration_zero_sum(model::CompiledMarkovModels.CompiledZeroSumMarkovGame;
+function shapley_value_iteration_zero_sum(model::TabularMarkovGames.TabularZeroSumMarkovGame;
                                           discount::Float64 = 0.99,
                                           tol::Float64 = 1e-8,
                                           max_iter::Int = 1000,
@@ -133,9 +112,8 @@ function shapley_value_iteration_zero_sum(model::CompiledMarkovModels.CompiledZe
                 Vnew[s] = 0.0
             else
                 pair_first = model.pair_ptr[s]
-                pair_last = model.pair_ptr[s + 1] - 1
-
                 pair_idx = pair_first
+
                 for i in 1:m, j in 1:n
                     t_first = model.trans_ptr[pair_idx]
                     t_last = model.trans_ptr[pair_idx + 1] - 1
@@ -163,34 +141,6 @@ function shapley_value_iteration_zero_sum(model::CompiledMarkovModels.CompiledZe
     return V, model.state_encoder
 end
 
-# ----------------------------------------------------------------------
-# Generic 2-player zero-sum discounted Markov games via Shapley iteration
-# ----------------------------------------------------------------------
-
-@inline function _can_use_compiled_zero_sum_path(game::Kernel.AbstractGame, states)
-    Kernel.action_mode(typeof(game)) === Kernel.IndexedActions || return false
-    @inbounds for s in states
-        nk = Kernel.node_kind(game, s)
-        if !(nk == Kernel.SIMULTANEOUS || nk == Kernel.TERMINAL)
-            return false
-        end
-    end
-    return true
-end
-
-"""
-Shapley value iteration for finite 2-player zero-sum discounted simultaneous Markov games.
-
-Requirements:
-- num_players(game) == 2
-- simultaneous or chance nodes only on the reachable state set
-- exact transition_kernel returning (next_state, prob, reward)
-- player-1 reward defines the zero-sum stage value
-
-For performance, prefer compiling first via:
-    model = CompiledMarkovModels.compile_zero_sum_markov_game(game, states)
-    shapley_value_iteration_zero_sum(model; ...)
-"""
 function shapley_value_iteration_zero_sum(game::Kernel.AbstractGame,
                                           states;
                                           discount::Float64 = 0.99,
@@ -201,131 +151,13 @@ function shapley_value_iteration_zero_sum(game::Kernel.AbstractGame,
         throw(ArgumentError("shapley_value_iteration_zero_sum requires a 2-player game."))
 
     state_vec = collect(states)
+    model = TabularCompile.compile_zero_sum_markov_game(game, state_vec)
 
-    if _can_use_compiled_zero_sum_path(game, state_vec)
-        model = CompiledMarkovModels.compile_zero_sum_markov_game(game, state_vec)
-        return shapley_value_iteration_zero_sum(model;
-                                                discount = discount,
-                                                tol = tol,
-                                                max_iter = max_iter,
-                                                optimizer = optimizer)
-    end
-
-    idx = _build_state_index(state_vec)
-
-    V = zeros(Float64, length(state_vec))
-    Vnew = similar(V)
-
-    legal_actions_p1 = Vector{Any}(undef, length(state_vec))
-    legal_actions_p2 = Vector{Any}(undef, length(state_vec))
-    max_m = 1
-    max_n = 1
-
-    @inbounds for sidx in eachindex(state_vec)
-        s = state_vec[sidx]
-        nk = Kernel.node_kind(game, s)
-        if nk == Kernel.SIMULTANEOUS
-            A1 = _materialize_actions(Kernel.legal_actions(game, s, 1))
-            A2 = _materialize_actions(Kernel.legal_actions(game, s, 2))
-            legal_actions_p1[sidx] = A1
-            legal_actions_p2[sidx] = A2
-            max_m = max(max_m, _action_count(A1))
-            max_n = max(max_n, _action_count(A2))
-        else
-            legal_actions_p1[sidx] = nothing
-            legal_actions_p2[sidx] = nothing
-        end
-    end
-
-    lpws = _StageLPWorkspace(max_m, max_n, optimizer)
-
-    for _ in 1:max_iter
-        Δ = 0.0
-
-        @inbounds for sidx in eachindex(state_vec)
-            s = state_vec[sidx]
-            nk = Kernel.node_kind(game, s)
-
-            if nk == Kernel.TERMINAL
-                Vnew[sidx] = 0.0
-
-            elseif nk == Kernel.CHANCE
-                acc = 0.0
-                for (event, prob_) in Exact.chance_outcomes(game, s)
-                    ns, r, _ = Kernel.step(game, s, Kernel.ChanceOutcome(event))
-                    nsidx = _state_index(idx, ns)
-                    rr = _scalar_reward(r)
-                    acc += prob_ * (rr + discount * V[nsidx])
-                end
-                Vnew[sidx] = acc
-
-            elseif nk == Kernel.SIMULTANEOUS
-                A1 = legal_actions_p1[sidx]
-                A2 = legal_actions_p2[sidx]
-                m = _action_count(A1)
-                n = _action_count(A2)
-
-                for i in 1:m, j in 1:n
-                    ja = Kernel.JointAction((A1[i], A2[j]))
-                    q = 0.0
-                    for entry in Exact.transition_kernel(game, s, ja)
-                        ns = _next_state(entry)
-                        p = _prob(entry)
-                        r = _reward(entry)
-                        nsidx = _state_index(idx, ns)
-                        rr = _scalar_reward(r)
-                        q += p * (rr + discount * V[nsidx])
-                    end
-                    lpws.stage[i, j] = q
-                end
-
-                Vnew[sidx] = _solve_stage_value!(lpws, m, n)
-
-            else
-                A = Kernel.legal_actions(game, s, Kernel.current_player(game, s))
-                p = Kernel.current_player(game, s)
-
-                if p == 1
-                    best = -Inf
-                    for a in A
-                        q = 0.0
-                        for entry in Exact.transition_kernel(game, s, a)
-                            ns = _next_state(entry)
-                            p_ = _prob(entry)
-                            r = _reward(entry)
-                            nsidx = _state_index(idx, ns)
-                            rr = _scalar_reward(r)
-                            q += p_ * (rr + discount * V[nsidx])
-                        end
-                        best = max(best, q)
-                    end
-                    Vnew[sidx] = best
-                else
-                    best = Inf
-                    for a in A
-                        q = 0.0
-                        for entry in Exact.transition_kernel(game, s, a)
-                            ns = _next_state(entry)
-                            p_ = _prob(entry)
-                            r = _reward(entry)
-                            nsidx = _state_index(idx, ns)
-                            rr = _scalar_reward(r)
-                            q += p_ * (rr + discount * V[nsidx])
-                        end
-                        best = min(best, q)
-                    end
-                    Vnew[sidx] = best
-                end
-            end
-
-            Δ = max(Δ, abs(Vnew[sidx] - V[sidx]))
-        end
-
-        V, Vnew = Vnew, V
-        Δ <= tol && break
-    end
-
-    return V, idx
+    return shapley_value_iteration_zero_sum(model;
+                                            discount = discount,
+                                            tol = tol,
+                                            max_iter = max_iter,
+                                            optimizer = optimizer)
 end
 
 end

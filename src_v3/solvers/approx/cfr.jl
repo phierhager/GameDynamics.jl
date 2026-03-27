@@ -1,6 +1,6 @@
 module CFRSolvers
 
-using ..CompiledExtensiveModels
+using ..TabularExtensiveTrees
 using ..ApproxSolverCommon
 
 export CFRWorkspace
@@ -36,7 +36,7 @@ mutable struct CFRPlusWorkspace
     averaging_delay::Int
 end
 
-function CFRWorkspace(model::CompiledExtensiveModels.CompiledExtensiveGame)
+function CFRWorkspace(model::TabularExtensiveTrees.TabularExtensiveTree)
     total_actions = model.infoset_offset[end] - 1
     return CFRWorkspace(
         zeros(total_actions),
@@ -55,14 +55,14 @@ function CFRWorkspace(model::CompiledExtensiveModels.CompiledExtensiveGame)
     )
 end
 
-CFRPlusWorkspace(model::CompiledExtensiveModels.CompiledExtensiveGame; averaging_delay::Int = 0) =
+CFRPlusWorkspace(model::TabularExtensiveTrees.TabularExtensiveTree; averaging_delay::Int = 0) =
     CFRPlusWorkspace(CFRWorkspace(model), 0, averaging_delay)
 
 @inline _i0(model, infoset::Int) = model.infoset_offset[infoset]
 @inline _i1(model, infoset::Int) = model.infoset_offset[infoset + 1] - 1
 @inline _nA(model, infoset::Int) = model.infoset_num_actions[infoset]
 
-@inline function _terminal_utility(model::CompiledExtensiveModels.CompiledExtensiveGame,
+@inline function _terminal_utility(model::TabularExtensiveTrees.TabularExtensiveTree,
                                    node::Int,
                                    player::Int)
     off = model.reward_first[node]
@@ -70,7 +70,7 @@ CFRPlusWorkspace(model::CompiledExtensiveModels.CompiledExtensiveGame; averaging
 end
 
 function regret_matching_policy!(ws::CFRWorkspace,
-                                 model::CompiledExtensiveModels.CompiledExtensiveGame,
+                                 model::TabularExtensiveTrees.TabularExtensiveTree,
                                  infoset::Int)
     i0 = _i0(model, infoset)
     i1 = _i1(model, infoset)
@@ -99,7 +99,7 @@ end
 
 function _write_current_policy!(dest::AbstractVector{Float64},
                                 ws::CFRWorkspace,
-                                model::CompiledExtensiveModels.CompiledExtensiveGame,
+                                model::TabularExtensiveTrees.TabularExtensiveTree,
                                 infoset::Int)
     i0 = _i0(model, infoset)
     i1 = _i1(model, infoset)
@@ -127,7 +127,7 @@ end
 
 function copy_average_policy!(dest::AbstractVector{Float64},
                               ws::CFRWorkspace,
-                              model::CompiledExtensiveModels.CompiledExtensiveGame,
+                              model::TabularExtensiveTrees.TabularExtensiveTree,
                               infoset::Int)
     i0 = _i0(model, infoset)
     i1 = _i1(model, infoset)
@@ -154,7 +154,7 @@ function copy_average_policy!(dest::AbstractVector{Float64},
 end
 
 @inline function _prepare_policies!(ws::CFRWorkspace,
-                                    model::CompiledExtensiveModels.CompiledExtensiveGame)
+                                    model::TabularExtensiveTrees.TabularExtensiveTree)
     @inbounds for infoset in 1:model.n_infosets
         regret_matching_policy!(ws, model, infoset)
     end
@@ -179,7 +179,7 @@ end
     return nothing
 end
 
-function _compute_node_values_stack!(model::CompiledExtensiveModels.CompiledExtensiveGame,
+function _compute_node_values_stack!(model::TabularExtensiveTrees.TabularExtensiveTree,
                                      ws::CFRWorkspace,
                                      updating_player::Int)
     empty!(ws.post_node_stack)
@@ -193,7 +193,7 @@ function _compute_node_values_stack!(model::CompiledExtensiveModels.CompiledExte
         nk = model.node_kind[node]
 
         if expanded == 0x00
-            if nk == CompiledExtensiveModels.NODE_TERMINAL
+            if nk == TabularExtensiveTrees.NODE_TERMINAL
                 ws.node_value[node] = _terminal_utility(model, node, updating_player)
             else
                 _push_post!(ws, node, 0x01)
@@ -207,7 +207,7 @@ function _compute_node_values_stack!(model::CompiledExtensiveModels.CompiledExte
             a0 = model.node_first[node]
             len = model.node_len[node]
 
-            if nk == CompiledExtensiveModels.NODE_CHANCE
+            if nk == TabularExtensiveTrees.NODE_CHANCE
                 acc = 0.0
                 @inbounds for k in 0:(len - 1)
                     slot = a0 + k
@@ -215,7 +215,7 @@ function _compute_node_values_stack!(model::CompiledExtensiveModels.CompiledExte
                 end
                 ws.node_value[node] = acc
 
-            elseif nk == CompiledExtensiveModels.NODE_SIMULTANEOUS
+            elseif nk == TabularExtensiveTrees.NODE_SIMULTANEOUS
                 throw(ArgumentError("Simultaneous nodes are not supported in CFR value computation."))
 
             else
@@ -233,7 +233,7 @@ function _compute_node_values_stack!(model::CompiledExtensiveModels.CompiledExte
     return ws
 end
 
-function _update_from_values_stack!(model::CompiledExtensiveModels.CompiledExtensiveGame,
+function _update_from_values_stack!(model::TabularExtensiveTrees.TabularExtensiveTree,
                                     ws::CFRWorkspace,
                                     updating_player::Int,
                                     avg_coeff::Float64;
@@ -253,10 +253,10 @@ function _update_from_values_stack!(model::CompiledExtensiveModels.CompiledExten
 
         nk = model.node_kind[node]
 
-        if nk == CompiledExtensiveModels.NODE_TERMINAL
+        if nk == TabularExtensiveTrees.NODE_TERMINAL
             continue
 
-        elseif nk == CompiledExtensiveModels.NODE_CHANCE
+        elseif nk == TabularExtensiveTrees.NODE_CHANCE
             a0 = model.node_first[node]
             len = model.node_len[node]
             @inbounds for k in (len - 1):-1:0
@@ -264,7 +264,7 @@ function _update_from_values_stack!(model::CompiledExtensiveModels.CompiledExten
                 _push_fwd!(ws, model.child[slot], p1, p2, pc * model.chance_prob[slot])
             end
 
-        elseif nk == CompiledExtensiveModels.NODE_SIMULTANEOUS
+        elseif nk == TabularExtensiveTrees.NODE_SIMULTANEOUS
             throw(ArgumentError("Simultaneous nodes are not supported in CFR update traversal."))
 
         else
@@ -331,7 +331,7 @@ function _update_from_values_stack!(model::CompiledExtensiveModels.CompiledExten
     return ws
 end
 
-function cfr_iteration!(model::CompiledExtensiveModels.CompiledExtensiveGame,
+function cfr_iteration!(model::TabularExtensiveTrees.TabularExtensiveTree,
                         ws::CFRWorkspace)
     ApproxSolverCommon.require_supported_2p_tree_model(model)
     _prepare_policies!(ws, model)
@@ -344,7 +344,7 @@ function cfr_iteration!(model::CompiledExtensiveModels.CompiledExtensiveGame,
     return ws
 end
 
-function cfrplus_iteration!(model::CompiledExtensiveModels.CompiledExtensiveGame,
+function cfrplus_iteration!(model::TabularExtensiveTrees.TabularExtensiveTree,
                             ws::CFRPlusWorkspace)
     ApproxSolverCommon.require_supported_2p_tree_model(model)
 
@@ -361,7 +361,7 @@ function cfrplus_iteration!(model::CompiledExtensiveModels.CompiledExtensiveGame
     return ws
 end
 
-function run_cfr!(model::CompiledExtensiveModels.CompiledExtensiveGame,
+function run_cfr!(model::TabularExtensiveTrees.TabularExtensiveTree,
                   ws::CFRWorkspace = CFRWorkspace(model);
                   n_iter::Int = 1_000)
     for _ in 1:n_iter
@@ -370,7 +370,7 @@ function run_cfr!(model::CompiledExtensiveModels.CompiledExtensiveGame,
     return ws
 end
 
-function run_cfrplus!(model::CompiledExtensiveModels.CompiledExtensiveGame,
+function run_cfrplus!(model::TabularExtensiveTrees.TabularExtensiveTree,
                       ws::CFRPlusWorkspace = CFRPlusWorkspace(model);
                       n_iter::Int = 1_000)
     for _ in 1:n_iter
@@ -379,27 +379,27 @@ function run_cfrplus!(model::CompiledExtensiveModels.CompiledExtensiveGame,
     return ws
 end
 
-function extract_average_policy(model::CompiledExtensiveModels.CompiledExtensiveGame,
+function extract_average_policy(model::TabularExtensiveTrees.TabularExtensiveTree,
                                 ws::CFRWorkspace)
     out = Dict{Int,Vector{Pair{eltype(model.infoset_action_label),Float64}}}()
     for infoset in 1:model.n_infosets
         nA = _nA(model, infoset)
         probs = Vector{Float64}(undef, nA)
         copy_average_policy!(probs, ws, model, infoset)
-        labs = CompiledExtensiveModels.infoset_action_labels(model, infoset)
+        labs = TabularExtensiveTrees.infoset_action_labels(model, infoset)
         out[infoset] = [labs[a] => probs[a] for a in 1:nA]
     end
     return out
 end
 
-function extract_current_policy(model::CompiledExtensiveModels.CompiledExtensiveGame,
+function extract_current_policy(model::TabularExtensiveTrees.TabularExtensiveTree,
                                 ws::CFRWorkspace)
     out = Dict{Int,Vector{Pair{eltype(model.infoset_action_label),Float64}}}()
     for infoset in 1:model.n_infosets
         nA = _nA(model, infoset)
         probs = Vector{Float64}(undef, nA)
         _write_current_policy!(probs, ws, model, infoset)
-        labs = CompiledExtensiveModels.infoset_action_labels(model, infoset)
+        labs = TabularExtensiveTrees.infoset_action_labels(model, infoset)
         out[infoset] = [labs[a] => probs[a] for a in 1:nA]
     end
     return out
