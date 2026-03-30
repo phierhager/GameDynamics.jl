@@ -1,7 +1,7 @@
 module LearningDiagnostics
 
 using Statistics
-using ..LearningFeedback
+using ..LearningSignals
 
 export RunningStat
 export RunningMean
@@ -81,8 +81,8 @@ Update trace from feedback only.
 This path tracks realized utility / reward but not regret unless a benchmark
 utility vector is available.
 """
-function push!(tr::LearnerTrace{T}, fb::LearningFeedback.AbstractFeedback) where {T}
-    u = LearningFeedback.realized_utility(fb)
+function push!(tr::LearnerTrace{T}, fb::LearningSignals.AbstractLearningSignal) where {T}
+    u = LearningSignals.realized_utility(fb)
     tr.t += 1
     tr.cumulative_utility += u
     tr.cumulative_reward += u
@@ -92,9 +92,9 @@ end
 """
 Update trace from full-information feedback, accumulating best-fixed baseline.
 """
-function push!(tr::LearnerTrace{T}, fb::LearningFeedback.FullInformationFeedback) where {T}
-    u = LearningFeedback.realized_utility(fb)
-    uv = LearningFeedback.utility_vector(fb)
+function push!(tr::LearnerTrace{T}, fb::LearningSignals.FullInformationSignal) where {T}
+    u = LearningSignals.realized_utility(fb)
+    uv = LearningSignals.utility_vector(fb)
     tr.t += 1
     tr.cumulative_utility += u
     tr.cumulative_reward += u

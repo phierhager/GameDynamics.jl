@@ -4,7 +4,7 @@ using GameLab
 
 const LI = GameLab.LearningInterfaces
 const LC = GameLab.LearningContexts
-const LF = GameLab.LearningFeedback
+const LF = GameLab.LearningSignals
 const EXP3M = GameLab.EXP3Learners
 
 @testset "EXP3Learners" begin
@@ -73,7 +73,7 @@ const EXP3M = GameLab.EXP3Learners
         st = EXP3M.EXP3State(learner)
         LI.policy!(st.probs, learner, st, LC.NullContext())
         before = copy(st.log_weights)
-        fb = LF.BanditFeedback(2, 1.0)
+        fb = LF.BanditSignal(2, 1.0)
 
         # Act
         LI.update!(learner, st, fb)
@@ -105,7 +105,7 @@ const EXP3M = GameLab.EXP3Learners
 
         # Act / Assert
         @test LI.action_mode(learner) == :discrete_index
-        @test LI.requires_feedback_type(learner) == LF.BanditFeedback
+        @test LI.requires_feedback_type(learner) == LF.BanditSignal
         @test LI.supports_action_space(learner) == :finite_discrete
     end
 end

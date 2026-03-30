@@ -3,7 +3,7 @@ module HedgeLearners
 using Random
 using ..Learning
 using ..LearningInterfaces
-using ..LearningFeedback
+using ..LearningSignals
 
 export Hedge
 export HedgeState
@@ -31,7 +31,7 @@ end
 
 Learning.learner_family(::Hedge) = :full_information
 LearningInterfaces.action_mode(::Hedge) = :discrete_index
-LearningInterfaces.requires_feedback_type(::Hedge) = LearningFeedback.FullInformationFeedback
+LearningInterfaces.requires_feedback_type(::Hedge) = LearningSignals.FullInformationSignal
 LearningInterfaces.supports_action_space(::Hedge) = :finite_discrete
 
 function LearningInterfaces.reset!(l::Hedge, st::HedgeState)
@@ -77,8 +77,8 @@ end
 
 function LearningInterfaces.update!(l::Hedge{T},
                                     st::HedgeState{T},
-                                    fb::LearningFeedback.FullInformationFeedback) where {T}
-    uv = LearningFeedback.utility_vector(fb)
+                                    fb::LearningSignals.FullInformationSignal) where {T}
+    uv = LearningSignals.utility_vector(fb)
     length(uv) == l.n_actions || throw(ArgumentError("Utility vector length mismatch."))
     @inbounds for i in 1:l.n_actions
         st.log_weights[i] += l.eta * uv[i]

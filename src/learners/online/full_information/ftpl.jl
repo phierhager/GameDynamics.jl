@@ -3,7 +3,7 @@ module FTPLLearners
 using Random
 using ..Learning
 using ..LearningInterfaces
-using ..LearningFeedback
+using ..LearningSignals
 
 export FTPL
 export FTPLState
@@ -30,7 +30,7 @@ end
 
 Learning.learner_family(::FTPL) = :full_information
 LearningInterfaces.action_mode(::FTPL) = :discrete_index
-LearningInterfaces.requires_feedback_type(::FTPL) = LearningFeedback.FullInformationFeedback
+LearningInterfaces.requires_feedback_type(::FTPL) = LearningSignals.FullInformationSignal
 LearningInterfaces.supports_action_space(::FTPL) = :finite_discrete
 
 function LearningInterfaces.reset!(l::FTPL, st::FTPLState)
@@ -67,8 +67,8 @@ end
 
 function LearningInterfaces.update!(l::FTPL{T},
                                     st::FTPLState{T},
-                                    fb::LearningFeedback.FullInformationFeedback) where {T}
-    uv = LearningFeedback.utility_vector(fb)
+                                    fb::LearningSignals.FullInformationSignal) where {T}
+    uv = LearningSignals.utility_vector(fb)
     length(uv) == l.n_actions || throw(ArgumentError("Utility vector length mismatch."))
     @inbounds for i in 1:l.n_actions
         st.cumulative_utilities[i] += uv[i]

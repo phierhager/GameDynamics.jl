@@ -4,7 +4,7 @@ using GameLab
 
 const LI = GameLab.LearningInterfaces
 const LC = GameLab.LearningContexts
-const LF = GameLab.LearningFeedback
+const LF = GameLab.LearningSignals
 const HM = GameLab.HedgeLearners
 
 @testset "HedgeLearners" begin
@@ -68,7 +68,7 @@ const HM = GameLab.HedgeLearners
         # Arrange
         learner = HM.Hedge(0.5, 3)
         st = HM.HedgeState(learner)
-        fb = LF.FullInformationFeedback(1, 0.0, [2.0, -1.0, 0.5])
+        fb = LF.FullInformationSignal(1, 0.0, [2.0, -1.0, 0.5])
 
         # Act
         LI.update!(learner, st, fb)
@@ -81,7 +81,7 @@ const HM = GameLab.HedgeLearners
         # Arrange
         learner = HM.Hedge(0.5, 3)
         st = HM.HedgeState(learner)
-        fb = LF.FullInformationFeedback(1, 0.0, [1.0, 2.0])
+        fb = LF.FullInformationSignal(1, 0.0, [1.0, 2.0])
 
         # Act / Assert
         @test_throws ArgumentError LI.update!(learner, st, fb)

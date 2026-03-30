@@ -18,7 +18,7 @@ using Statistics
 using GameLab.NormalForm
 using GameLab.LearningInterfaces
 using GameLab.LearningContexts
-using GameLab.LearningFeedback
+using GameLab.LearningSignals
 using GameLab.LearningDiagnostics
 using GameLab.HedgeLearners
 
@@ -233,8 +233,8 @@ function train_rps_hedge(; rounds::Int = 50_000,
         uvec1 = one_hot_utility_vs_opponent(game, 1, a2)
         uvec2 = one_hot_utility_vs_opponent(game, 2, a1)
 
-        fb1 = LearningFeedback.FullInformationFeedback(a1, r1, uvec1)
-        fb2 = LearningFeedback.FullInformationFeedback(a2, r2, uvec2)
+        fb1 = LearningSignals.FullInformationSignal(a1, r1, uvec1)
+        fb2 = LearningSignals.FullInformationSignal(a2, r2, uvec2)
 
         avg_reward_p1 += (r1 - avg_reward_p1) / t
         avg_reward_p2 += (r2 - avg_reward_p2) / t

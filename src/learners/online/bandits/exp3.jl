@@ -3,7 +3,7 @@ module EXP3Learners
 using Random
 using ..Learning
 using ..LearningInterfaces
-using ..LearningFeedback
+using ..LearningSignals
 
 export EXP3
 export EXP3State
@@ -32,7 +32,7 @@ end
 
 Learning.learner_family(::EXP3) = :bandit
 LearningInterfaces.action_mode(::EXP3) = :discrete_index
-LearningInterfaces.requires_feedback_type(::EXP3) = LearningFeedback.BanditFeedback
+LearningInterfaces.requires_feedback_type(::EXP3) = LearningSignals.BanditSignal
 LearningInterfaces.supports_action_space(::EXP3) = :finite_discrete
 
 function LearningInterfaces.reset!(l::EXP3, st::EXP3State)
@@ -79,9 +79,9 @@ end
 
 function LearningInterfaces.update!(l::EXP3{T},
                                     st::EXP3State{T},
-                                    fb::LearningFeedback.BanditFeedback) where {T}
-    a = LearningFeedback.chosen_action(fb)
-    u = LearningFeedback.realized_utility(fb)
+                                    fb::LearningSignals.BanditSignal) where {T}
+    a = LearningSignals.chosen_action(fb)
+    u = LearningSignals.realized_utility(fb)
     p = st.probs[a]
     st.log_weights[a] += l.eta * (u / max(p, eps(T)))
     return st

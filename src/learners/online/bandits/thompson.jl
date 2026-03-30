@@ -3,7 +3,7 @@ module ThompsonLearners
 using Random
 using ..Learning
 using ..LearningInterfaces
-using ..LearningFeedback
+using ..LearningSignals
 
 export GaussianThompson
 export GaussianThompsonState
@@ -37,7 +37,7 @@ end
 
 Learning.learner_family(::GaussianThompson) = :bayesian_bandit
 LearningInterfaces.action_mode(::GaussianThompson) = :discrete_index
-LearningInterfaces.requires_feedback_type(::GaussianThompson) = LearningFeedback.BanditFeedback
+LearningInterfaces.requires_feedback_type(::GaussianThompson) = LearningSignals.BanditSignal
 LearningInterfaces.supports_action_space(::GaussianThompson) = :finite_discrete
 
 function LearningInterfaces.reset!(l::GaussianThompson, st::GaussianThompsonState)
@@ -80,9 +80,9 @@ end
 
 function LearningInterfaces.update!(l::GaussianThompson{T},
                                     st::GaussianThompsonState{T},
-                                    fb::LearningFeedback.BanditFeedback) where {T}
-    a = LearningFeedback.chosen_action(fb)
-    y = LearningFeedback.realized_utility(fb)
+                                    fb::LearningSignals.BanditSignal) where {T}
+    a = LearningSignals.chosen_action(fb)
+    y = LearningSignals.realized_utility(fb)
     μ, τ = _gaussian_posterior_update!(st.posterior_mean[a], st.posterior_precision[a], y, l.obs_precision)
     st.posterior_mean[a] = μ
     st.posterior_precision[a] = τ

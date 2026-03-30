@@ -4,7 +4,7 @@ using GameLab
 
 const LI = GameLab.LearningInterfaces
 const LC = GameLab.LearningContexts
-const LF = GameLab.LearningFeedback
+const LF = GameLab.LearningSignals
 const TM = GameLab.ThompsonLearners
 
 @testset "ThompsonLearners" begin
@@ -56,7 +56,7 @@ const TM = GameLab.ThompsonLearners
         st = TM.GaussianThompsonState(learner)
         before_means = copy(st.posterior_mean)
         before_precs = copy(st.posterior_precision)
-        fb = LF.BanditFeedback(2, 6.0)
+        fb = LF.BanditSignal(2, 6.0)
 
         # Act
         LI.update!(learner, st, fb)
@@ -74,7 +74,7 @@ const TM = GameLab.ThompsonLearners
         # Arrange
         learner = TM.GaussianThompson(1.0, 4.0, 2.0, 2)
         st = TM.GaussianThompsonState(learner)
-        LI.update!(learner, st, LF.BanditFeedback(1, 10.0))
+        LI.update!(learner, st, LF.BanditSignal(1, 10.0))
 
         # Act
         LI.reset!(learner, st)
@@ -90,7 +90,7 @@ const TM = GameLab.ThompsonLearners
 
         # Act / Assert
         @test LI.action_mode(learner) == :discrete_index
-        @test LI.requires_feedback_type(learner) == LF.BanditFeedback
+        @test LI.requires_feedback_type(learner) == LF.BanditSignal
         @test LI.supports_action_space(learner) == :finite_discrete
     end
 end

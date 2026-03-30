@@ -4,7 +4,7 @@ using GameLab
 
 const LI = GameLab.LearningInterfaces
 const LC = GameLab.LearningContexts
-const LF = GameLab.LearningFeedback
+const LF = GameLab.LearningSignals
 
 @testset "LearningInterfaces" begin
     struct DummyLearner <: LI.AbstractLearner end
@@ -46,7 +46,7 @@ const LF = GameLab.LearningFeedback
         # Arrange
         learner = DummyLearner()
         state = DummyState()
-        fb = LF.BanditFeedback(1, 1.0)
+        fb = LF.BanditSignal(1, 1.0)
 
         # Act / Assert
         @test_throws MethodError LI.update!(learner, state, fb)

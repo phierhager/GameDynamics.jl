@@ -4,7 +4,7 @@ using GameLab
 
 const LI = GameLab.LearningInterfaces
 const LC = GameLab.LearningContexts
-const LF = GameLab.LearningFeedback
+const LF = GameLab.LearningSignals
 const UM = GameLab.UCBLearners
 
 @testset "UCBLearners" begin
@@ -44,7 +44,7 @@ const UM = GameLab.UCBLearners
 
         # Act
         a1 = LI.act!(learner, st, LC.NullContext(), MersenneTwister(1))
-        LI.update!(learner, st, LF.BanditFeedback(a1, 0.5))
+        LI.update!(learner, st, LF.BanditSignal(a1, 0.5))
         a2 = LI.act!(learner, st, LC.NullContext(), MersenneTwister(1))
 
         # Assert
@@ -72,7 +72,7 @@ const UM = GameLab.UCBLearners
         # Arrange
         learner = UM.UCB1(1.0, 3)
         st = UM.UCB1State(learner)
-        fb = LF.BanditFeedback(3, 2.5)
+        fb = LF.BanditSignal(3, 2.5)
 
         # Act
         LI.update!(learner, st, fb)
@@ -105,7 +105,7 @@ const UM = GameLab.UCBLearners
 
         # Act / Assert
         @test LI.action_mode(learner) == :discrete_index
-        @test LI.requires_feedback_type(learner) == LF.BanditFeedback
+        @test LI.requires_feedback_type(learner) == LF.BanditSignal
         @test LI.supports_action_space(learner) == :finite_discrete
     end
 end

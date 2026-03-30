@@ -66,7 +66,7 @@ include("games/families/extensive_form/behavior.jl")
 # ------------------------------------------------------------------------------
 
 include("runtime/environment.jl")
-include("runtime/trajectories.jl")
+include("runtime/records.jl")
 include("runtime/execution.jl")
 include("runtime/rollouts.jl")
 
@@ -118,7 +118,6 @@ include("games/families/bayesian/signaling.jl")
 # Learning
 # ------------------------------------------------------------------------------
 
-include("learners/feedback.jl")
 include("learners/diagnostics.jl")
 include("learners/core/interfaces.jl")
 include("learners/core/contexts.jl")
@@ -255,7 +254,7 @@ const _PUBLIC_MODULES = (
     ExtensiveForm,
 
     RuntimeEnvironment,
-    RuntimeTrajectories,
+    RuntimeRecords,
     RuntimeStrategyExecution,
     RuntimeRollouts,
 
@@ -274,7 +273,7 @@ const _PUBLIC_MODULES = (
     Signaling,
 
     Learning,
-    LearningFeedback,
+    LearningSignals,
     LearningDiagnostics,
     LearningInterfaces,
     LearningContexts,

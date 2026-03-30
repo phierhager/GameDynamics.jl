@@ -1,7 +1,7 @@
 using Test
 using GameLab
 
-const LF = GameLab.LearningFeedback
+const LF = GameLab.LearningSignals
 const LD = GameLab.LearningDiagnostics
 
 @testset "LearningDiagnostics" begin
@@ -65,7 +65,7 @@ const LD = GameLab.LearningDiagnostics
     @testset "LearnerTrace push! with bandit feedback updates utility only" begin
         # Arrange
         tr = LD.LearnerTrace{Float64}()
-        fb = LF.BanditFeedback(2, 1.25)
+        fb = LF.BanditSignal(2, 1.25)
 
         # Act
         LD.push!(tr, fb)
@@ -81,7 +81,7 @@ const LD = GameLab.LearningDiagnostics
     @testset "LearnerTrace push! with full-information feedback updates regret benchmark" begin
         # Arrange
         tr = LD.LearnerTrace{Float64}()
-        fb = LF.FullInformationFeedback(2, 0.5, [0.1, 0.5, 0.9])
+        fb = LF.FullInformationSignal(2, 0.5, [0.1, 0.5, 0.9])
 
         # Act
         LD.push!(tr, fb)
@@ -99,8 +99,8 @@ const LD = GameLab.LearningDiagnostics
     @testset "LearnerTrace reset! clears all fields" begin
         # Arrange
         tr = LD.LearnerTrace{Float64}()
-        LD.push!(tr, LF.BanditFeedback(1, 2.0))
-        LD.push!(tr, LF.FullInformationFeedback(1, 1.0, [1.0, 3.0]))
+        LD.push!(tr, LF.BanditSignal(1, 2.0))
+        LD.push!(tr, LF.FullInformationSignal(1, 1.0, [1.0, 3.0]))
 
         # Act
         LD.reset!(tr)

@@ -3,7 +3,7 @@ module UCBLearners
 using Random
 using ..Learning
 using ..LearningInterfaces
-using ..LearningFeedback
+using ..LearningSignals
 
 export UCB1
 export UCB1State
@@ -31,7 +31,7 @@ end
 
 Learning.learner_family(::UCB1) = :bandit
 LearningInterfaces.action_mode(::UCB1) = :discrete_index
-LearningInterfaces.requires_feedback_type(::UCB1) = LearningFeedback.BanditFeedback
+LearningInterfaces.requires_feedback_type(::UCB1) = LearningSignals.BanditSignal
 LearningInterfaces.supports_action_space(::UCB1) = :finite_discrete
 
 function LearningInterfaces.reset!(l::UCB1, st::UCB1State)
@@ -79,9 +79,9 @@ end
 
 function LearningInterfaces.update!(l::UCB1{T},
                                     st::UCB1State{T},
-                                    fb::LearningFeedback.BanditFeedback) where {T}
-    a = LearningFeedback.chosen_action(fb)
-    u = LearningFeedback.realized_utility(fb)
+                                    fb::LearningSignals.BanditSignal) where {T}
+    a = LearningSignals.chosen_action(fb)
+    u = LearningSignals.realized_utility(fb)
     st.counts[a] += 1
     st.value_sums[a] += u
     return st

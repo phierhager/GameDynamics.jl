@@ -85,9 +85,9 @@ end
 Declare the preferred feedback type for this learner family.
 
 Examples:
-- `LearningFeedback.BanditFeedback`
-- `LearningFeedback.FullInformationFeedback`
-- `LearningFeedback.GradientFeedback`
+- `LearningSignals.BanditSignal`
+- `LearningSignals.FullInformationSignal`
+- `LearningSignals.GradientSignal`
 """
 requires_feedback_type(::AbstractLearner) = Any
 
