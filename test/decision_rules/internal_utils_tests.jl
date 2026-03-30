@@ -1,15 +1,15 @@
 using Test
 
 using GameLab
-using GameLab.DecisionRuleInternalUtils
+using GameLab.StrategyInternalUtils
 
-@testset "DecisionRuleInternalUtils" begin
+@testset "StrategyInternalUtils" begin
     @testset "normalize_probs on tuple" begin
         # Arrange
         probs = (2, 6, 2)
 
         # Act
-        normalized = DecisionRuleInternalUtils.normalize_probs(probs)
+        normalized = StrategyInternalUtils.normalize_probs(probs)
 
         # Assert
         @test normalized == (0.2, 0.6, 0.2)
@@ -22,7 +22,7 @@ using GameLab.DecisionRuleInternalUtils
         probs = [1, 3]
 
         # Act
-        normalized = DecisionRuleInternalUtils.normalize_probs(probs)
+        normalized = StrategyInternalUtils.normalize_probs(probs)
 
         # Assert
         @test normalized == [0.25, 0.75]
@@ -32,12 +32,12 @@ using GameLab.DecisionRuleInternalUtils
 
     @testset "normalize_probs rejects invalid inputs" begin
         # Arrange / Act / Assert
-        @test_throws ArgumentError DecisionRuleInternalUtils.normalize_probs(())
-        @test_throws ArgumentError DecisionRuleInternalUtils.normalize_probs(Int[])
-        @test_throws ArgumentError DecisionRuleInternalUtils.normalize_probs((0, 0))
-        @test_throws ArgumentError DecisionRuleInternalUtils.normalize_probs([0.0, 0.0])
-        @test_throws ArgumentError DecisionRuleInternalUtils.normalize_probs((-1, 2))
-        @test_throws ArgumentError DecisionRuleInternalUtils.normalize_probs([1.0, -0.5])
+        @test_throws ArgumentError StrategyInternalUtils.normalize_probs(())
+        @test_throws ArgumentError StrategyInternalUtils.normalize_probs(Int[])
+        @test_throws ArgumentError StrategyInternalUtils.normalize_probs((0, 0))
+        @test_throws ArgumentError StrategyInternalUtils.normalize_probs([0.0, 0.0])
+        @test_throws ArgumentError StrategyInternalUtils.normalize_probs((-1, 2))
+        @test_throws ArgumentError StrategyInternalUtils.normalize_probs([1.0, -0.5])
     end
 
     @testset "canonicalize_support_probs merges duplicates and preserves first-seen order" begin
@@ -46,7 +46,7 @@ using GameLab.DecisionRuleInternalUtils
         probs = (1, 2, 3, 4, 10)
 
         # Act
-        acts, ps = DecisionRuleInternalUtils.canonicalize_support_probs(actions, probs)
+        acts, ps = StrategyInternalUtils.canonicalize_support_probs(actions, probs)
 
         # Assert
         @test acts == (:a, :b, :c)
@@ -58,8 +58,8 @@ using GameLab.DecisionRuleInternalUtils
 
     @testset "canonicalize_support_probs rejects invalid lengths and empty support" begin
         # Arrange / Act / Assert
-        @test_throws ArgumentError DecisionRuleInternalUtils.canonicalize_support_probs((:a,), (0.5, 0.5))
-        @test_throws ArgumentError DecisionRuleInternalUtils.canonicalize_support_probs((), ())
+        @test_throws ArgumentError StrategyInternalUtils.canonicalize_support_probs((:a,), (0.5, 0.5))
+        @test_throws ArgumentError StrategyInternalUtils.canonicalize_support_probs((), ())
     end
 
     @testset "canonicalize_joint_tuple_probs merges duplicate tuples" begin
@@ -68,7 +68,7 @@ using GameLab.DecisionRuleInternalUtils
         probs = (0.2, 0.3, 0.5)
 
         # Act
-        tuples, ps = DecisionRuleInternalUtils.canonicalize_joint_tuple_probs(joint_support, probs)
+        tuples, ps = StrategyInternalUtils.canonicalize_joint_tuple_probs(joint_support, probs)
 
         # Assert
         @test tuples == ((:L, :U), (:R, :D))
@@ -79,7 +79,7 @@ using GameLab.DecisionRuleInternalUtils
 
     @testset "canonicalize_joint_tuple_probs rejects invalid inputs" begin
         # Arrange / Act / Assert
-        @test_throws ArgumentError DecisionRuleInternalUtils.canonicalize_joint_tuple_probs((), ())
-        @test_throws ArgumentError DecisionRuleInternalUtils.canonicalize_joint_tuple_probs(((1, 2),), (0.1, 0.9))
+        @test_throws ArgumentError StrategyInternalUtils.canonicalize_joint_tuple_probs((), ())
+        @test_throws ArgumentError StrategyInternalUtils.canonicalize_joint_tuple_probs(((1, 2),), (0.1, 0.9))
     end
 end

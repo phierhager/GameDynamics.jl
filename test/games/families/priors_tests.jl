@@ -2,7 +2,7 @@ using Test
 using Random
 
 using GameLab.Spaces
-using GameLab.DirectDecisionRules
+using GameLab.LocalStrategies
 using GameLab.BayesianPriors
 
 @testset "BayesianPriors" begin
@@ -67,8 +67,8 @@ using GameLab.BayesianPriors
             Spaces.FiniteSpace((:X, :Y)),
         )
         marginals = (
-            DirectDecisionRules.FiniteMixedDecisionRule((:A, :B), (0.25, 0.75)),
-            DirectDecisionRules.FiniteMixedDecisionRule((:X, :Y), (0.6, 0.4)),
+            LocalStrategies.FiniteMixedStrategy((:A, :B), (0.25, 0.75)),
+            LocalStrategies.FiniteMixedStrategy((:X, :Y), (0.6, 0.4)),
         )
 
         prior = BayesianPriors.IndependentPrior(spaces, marginals)
@@ -88,8 +88,8 @@ using GameLab.BayesianPriors
             Spaces.FiniteSpace((:X, :Y)),
         )
         marginals = (
-            DirectDecisionRules.FiniteMixedDecisionRule((:A, :B), (0.25, 0.75)),
-            DirectDecisionRules.FiniteMixedDecisionRule((:X, :Y), (0.6, 0.4)),
+            LocalStrategies.FiniteMixedStrategy((:A, :B), (0.25, 0.75)),
+            LocalStrategies.FiniteMixedStrategy((:X, :Y), (0.6, 0.4)),
         )
 
         prior = BayesianPriors.IndependentPrior(spaces, marginals)

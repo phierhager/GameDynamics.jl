@@ -3,7 +3,7 @@ using Random
 
 using GameLab.Kernel
 using GameLab.ExtensiveForm
-using GameLab.DirectDecisionRules
+using GameLab.LocalStrategies
 
 @testset "ExtensiveForm behavior helpers" begin
     struct EFState <: Kernel.AbstractState
@@ -34,13 +34,13 @@ using GameLab.DirectDecisionRules
     Kernel.observe(::DecisionEFGame, s::EFState, p::Int) = (:obs, s.kind, p)
     Kernel.observe(::SimultaneousEFGame, s::EFState, p::Int) = (:obs, s.kind, p)
 
-    struct ConstantActionStrategy{A} <: DecisionRulesInterface.AbstractDecisionRule
+    struct ConstantActionStrategy{A} <: StrategyInterface.AbstractStrategy
         a::A
     end
 
-    DecisionRulesInterface.local_rule(s::ConstantActionStrategy, infoset) = s
-    DecisionRulesInterface.sample_action(s::ConstantActionStrategy, infoset, rng::AbstractRNG=Random.default_rng()) = s.a
-    DecisionRulesInterface.action_probability(s::ConstantActionStrategy, infoset, action) = action == s.a ? 1.0 : 0.0
+    StrategyInterface.local_strategy(s::ConstantActionStrategy, infoset) = s
+    StrategyInterface.sample_action(s::ConstantActionStrategy, infoset, rng::AbstractRNG=Random.default_rng()) = s.a
+    StrategyInterface.action_probability(s::ConstantActionStrategy, infoset, action) = action == s.a ? 1.0 : 0.0
 
     @testset "local behavior helpers" begin
         g = DecisionEFGame()

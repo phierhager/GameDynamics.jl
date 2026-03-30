@@ -3,7 +3,7 @@ module RuntimeRollouts
 using Random
 using ..Kernel
 using ..RuntimeEnvironment
-using ..RuleExecution
+using ..RuntimeStrategyExecution
 
 export rollout_value
 
@@ -16,7 +16,7 @@ export rollout_value
 end
 
 """
-Roll out a decision-rule profile in a game from the initial state.
+Roll out a strategy profile in a game from the initial state.
 
 Episode truncation follows the runtime episode semantics of the game via
 `RuntimeEnvironment.default_episode_limit(game)`. This helper does not accept a
@@ -38,7 +38,7 @@ function rollout_value(game::Kernel.AbstractGame,
     steps = 0
 
     while !Kernel.is_terminal(game, state) && !RuntimeEnvironment.is_truncated(limit, steps)
-        action = RuleExecution.sample_profile_action(profile, game, state, rng)
+        action = RuntimeStrategyExecution.sample_joint_action(profile, game, state, rng)
         state, rewards = Kernel.step(game, state, action, rng)
 
         @inbounds for i in 1:N

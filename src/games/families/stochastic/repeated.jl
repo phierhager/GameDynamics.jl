@@ -4,8 +4,8 @@ using Random
 using ..Kernel
 using ..NormalForm
 using ..Classification
-using ..DecisionRulesInterface
-using ..DecisionRuleProfiles
+using ..StrategyInterface
+using ..StrategyProfiles
 
 export RepeatedNormalFormGame
 export GeneralRepeatedNormalFormGame
@@ -60,7 +60,7 @@ This object represents the same repeated stage-game skeleton as
 may depend on the full realized repeated-game history.
 
 Expected strategy interface in `play_general_repeated_profile`:
-- each player's strategy is queried as `DecisionRulesInterface.sample_action(strategy, history, rng)`
+- each player's strategy is queried as `StrategyInterface.sample_action(strategy, history, rng)`
 
 where `history` is a `RepeatedHistory`.
 
@@ -183,7 +183,7 @@ Returns the tuple of discounted cumulative player returns over the repeated
 horizon.
 """
 function play_repeated_profile(g::RepeatedNormalFormGame,
-                               profile::Tuple{Vararg{DecisionRulesInterface.AbstractDecisionRule,N}},
+                               profile::Tuple{Vararg{StrategyInterface.AbstractStrategy,N}},
                                rng::AbstractRNG = Random.default_rng()) where {N}
     N == Kernel.num_players(g.stage_game) ||
         throw(ArgumentError("Profile size does not match number of players."))
@@ -192,7 +192,7 @@ function play_repeated_profile(g::RepeatedNormalFormGame,
     coeff = 1.0
 
     for _ in 1:g.horizon
-        ja = DecisionRuleProfiles.sample_joint_action(profile, rng)
+        ja = StrategyProfiles.sample_joint_action(profile, rng)
         acts = _validate_stage_action_profile(g.stage_game, Tuple(ja))
         pay = NormalForm.pure_payoff(g.stage_game, acts)
         totals = ntuple(i -> totals[i] + coeff * pay[i], N)
@@ -203,9 +203,9 @@ function play_repeated_profile(g::RepeatedNormalFormGame,
 end
 
 play_repeated_profile(g::RepeatedNormalFormGame,
-                      profile::DecisionRuleProfiles.DecisionRuleProfile{N},
+                      profile::StrategyProfiles.StrategyProfile{N},
                       rng::AbstractRNG = Random.default_rng()) where {N} =
-    play_repeated_profile(g, profile.rules, rng)
+    play_repeated_profile(g, profile.strategies, rng)
 
 # ----------------------------------------------------------------------
 # General history-dependent repeated-play simulator
@@ -215,7 +215,7 @@ play_repeated_profile(g::RepeatedNormalFormGame,
 Simulate public-history, nonstationary repeated play.
 
 Each local strategy is queried as:
-- `DecisionRulesInterface.sample_action(strategy, history, rng)`
+- `StrategyInterface.sample_action(strategy, history, rng)`
 
 where `history` is the realized `RepeatedHistory` accumulated so far.
 
@@ -226,7 +226,7 @@ Returns:
 as `(totals, history)`.
 """
 function play_general_repeated_profile(g::GeneralRepeatedNormalFormGame,
-                                       profile::Tuple{Vararg{DecisionRulesInterface.AbstractDecisionRule,N}},
+                                       profile::Tuple{Vararg{StrategyInterface.AbstractStrategy,N}},
                                        rng::AbstractRNG = Random.default_rng()) where {N}
     N == Kernel.num_players(g.stage_game) ||
         throw(ArgumentError("Profile size does not match number of players."))
@@ -237,7 +237,7 @@ function play_general_repeated_profile(g::GeneralRepeatedNormalFormGame,
 
     for _ in 1:g.horizon
         acts = ntuple(i -> begin
-            a = DecisionRulesInterface.sample_action(profile[i], history, rng)
+            a = StrategyInterface.sample_action(profile[i], history, rng)
             _validate_stage_action(g.stage_game, i, a)
         end, N)
 
@@ -252,8 +252,8 @@ function play_general_repeated_profile(g::GeneralRepeatedNormalFormGame,
 end
 
 play_general_repeated_profile(g::GeneralRepeatedNormalFormGame,
-                              profile::DecisionRuleProfiles.DecisionRuleProfile{N},
+                              profile::StrategyProfiles.StrategyProfile{N},
                               rng::AbstractRNG = Random.default_rng()) where {N} =
-    play_general_repeated_profile(g, profile.rules, rng)
+    play_general_repeated_profile(g, profile.strategies, rng)
 
 end

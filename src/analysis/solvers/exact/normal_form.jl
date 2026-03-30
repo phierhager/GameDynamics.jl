@@ -105,8 +105,8 @@ function solve_zero_sum_nash(game::NormalForm.NormalFormGame{2};
 
     yval = value.(y)
 
-    σ1 = DirectDecisionRules.FiniteMixedDecisionRule(Base.OneTo(m), xval)
-    σ2 = DirectDecisionRules.FiniteMixedDecisionRule(Base.OneTo(n), yval)
+    σ1 = LocalStrategies.FiniteMixedStrategy(Base.OneTo(m), xval)
+    σ2 = LocalStrategies.FiniteMixedStrategy(Base.OneTo(n), yval)
 
     return σ1, σ2, vval
 end
@@ -199,7 +199,7 @@ function solve_ce(game::NormalForm.NormalFormGame{N};
     prof_support = ntuple(i -> profiles[keep[i]], length(keep))
     prob_support = ntuple(i -> probs[keep[i]], length(keep))
 
-    return JointDecisionRules.CorrelatedActionRule(prof_support, prob_support)
+    return JointStrategies.CorrelatedRecommendationDevice(prof_support, prob_support)
 end
 
 function solve_cce(game::NormalForm.NormalFormGame{N};
@@ -240,7 +240,7 @@ function solve_cce(game::NormalForm.NormalFormGame{N};
     prof_support = ntuple(i -> profiles[keep[i]], length(keep))
     prob_support = ntuple(i -> probs[keep[i]], length(keep))
 
-    return JointDecisionRules.CorrelatedActionRule(prof_support, prob_support)
+    return JointStrategies.CorrelatedRecommendationDevice(prof_support, prob_support)
 end
 
 end

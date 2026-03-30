@@ -2,8 +2,8 @@ module BayesianPriors
 
 using Random
 using ...Spaces
-using ...DecisionRulesInterface
-using ...DirectDecisionRules
+using ...StrategyInterface
+using ...LocalStrategies
 
 export CommonPrior
 export IndependentPrior
@@ -54,7 +54,7 @@ function _canonicalize_type_profiles_probs(support_profiles, probs)
     isempty(support_profiles) &&
         throw(ArgumentError("CommonPrior support must be nonempty."))
 
-    p = DecisionRulesInterface.probabilities(DirectDecisionRules.FiniteMixedDecisionRule(probs))
+    p = StrategyInterface.probabilities(LocalStrategies.FiniteMixedStrategy(probs))
 
     T = eltype(support_profiles)
     acc = Dict{T,Float64}()
@@ -229,9 +229,9 @@ struct IndependentPrior{S,M}
             throw(ArgumentError("IndependentPrior requires at least one player."))
 
         @inbounds for i in eachindex(marginals)
-            marginals[i] isa DecisionRulesInterface.AbstractDecisionRule ||
+            marginals[i] isa StrategyInterface.AbstractStrategy ||
                 throw(ArgumentError(
-                    "Each marginal must subtype AbstractDecisionRule. Entry $i has type $(typeof(marginals[i]))."
+                    "Each marginal must subtype AbstractStrategy. Entry $i has type $(typeof(marginals[i]))."
                 ))
         end
 
@@ -254,7 +254,7 @@ Sample a full type profile under independent marginals.
 """
 function sample_type_profile(prior::IndependentPrior, rng::AbstractRNG = Random.default_rng())
     N = length(prior.marginals)
-    return ntuple(i -> DecisionRulesInterface.sample_action(prior.marginals[i], rng), N)
+    return ntuple(i -> StrategyInterface.sample_action(prior.marginals[i], rng), N)
 end
 
 """
@@ -266,7 +266,7 @@ function prior_probability(prior::IndependentPrior, profile::Tuple)
 
     p = 1.0
     @inbounds for i in eachindex(prior.marginals)
-        p *= DecisionRulesInterface.action_probability(prior.marginals[i], profile[i])
+        p *= StrategyInterface.action_probability(prior.marginals[i], profile[i])
     end
     return p
 end
@@ -279,7 +279,7 @@ function marginal_probability(prior::IndependentPrior, player::Int, typ)
         throw(ArgumentError(
             "Invalid player index $player for IndependentPrior with $(length(prior.marginals)) marginals."
         ))
-    return DecisionRulesInterface.action_probability(prior.marginals[player], typ)
+    return StrategyInterface.action_probability(prior.marginals[player], typ)
 end
 
 end

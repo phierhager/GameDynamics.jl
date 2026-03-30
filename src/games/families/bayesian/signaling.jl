@@ -1,8 +1,8 @@
 module Signaling
 
 using Random
-using ..DecisionRulesInterface
-using ..DirectDecisionRules
+using ..StrategyInterface
+using ..LocalStrategies
 using ..Bayesian
 using ..Classification
 using ..Spaces
@@ -53,11 +53,11 @@ end
     sender_type,
     rng::AbstractRNG = Random.default_rng(),
 )
-    rule = p.sender
-    if DecisionRulesInterface.context_kind(rule) isa DecisionRulesInterface.NoContext
-        return DecisionRulesInterface.sample_action(rule, rng)
+    strategy = p.sender
+    if StrategyInterface.context_kind(strategy) isa StrategyInterface.NoContext
+        return StrategyInterface.sample_action(strategy, rng)
     else
-        return DecisionRulesInterface.sample_action(rule, sender_type, rng)
+        return StrategyInterface.sample_action(strategy, sender_type, rng)
     end
 end
 
@@ -66,11 +66,11 @@ end
     message,
     rng::AbstractRNG = Random.default_rng(),
 )
-    rule = p.receiver
-    if DecisionRulesInterface.context_kind(rule) isa DecisionRulesInterface.NoContext
-        return DecisionRulesInterface.sample_action(rule, rng)
+    strategy = p.receiver
+    if StrategyInterface.context_kind(strategy) isa StrategyInterface.NoContext
+        return StrategyInterface.sample_action(strategy, rng)
     else
-        return DecisionRulesInterface.sample_action(rule, message, rng)
+        return StrategyInterface.sample_action(strategy, message, rng)
     end
 end
 
@@ -79,13 +79,13 @@ end
 # ----------------------------------------------------------------------
 
 @inline function _support_eltype(s)
-    return eltype(DecisionRulesInterface.support(s))
+    return eltype(StrategyInterface.support(s))
 end
 
 function _message_type(types, sender_behavior)
     first_type = first(types)
-    first_ls = DecisionRulesInterface.local_rule(sender_behavior, first_type)
-    first_support = DecisionRulesInterface.support(first_ls)
+    first_ls = StrategyInterface.local_strategy(sender_behavior, first_type)
+    first_support = StrategyInterface.support(first_ls)
     isempty(first_support) && throw(ArgumentError(
         "Sender local strategy must have nonempty support for sender type $first_type."
     ))
@@ -94,8 +94,8 @@ function _message_type(types, sender_behavior)
 
     @inbounds for i in 2:length(types)
         t = types[i]
-        ls = DecisionRulesInterface.local_rule(sender_behavior, t)
-        A = DecisionRulesInterface.support(ls)
+        ls = StrategyInterface.local_strategy(sender_behavior, t)
+        A = StrategyInterface.support(ls)
         isempty(A) && throw(ArgumentError(
             "Sender local strategy must have nonempty support for sender type $t."
         ))
@@ -139,9 +139,9 @@ function induced_message_distribution(prior, sender_behavior, sender_player::Int
     @inbounds for i in eachindex(types)
         t = types[i]
         pt = Bayesian.marginal_probability(prior, sender_player, t)
-        ls = DecisionRulesInterface.local_rule(sender_behavior, t)
-        A = DecisionRulesInterface.support(ls)
-        P = DecisionRulesInterface.probabilities(ls)
+        ls = StrategyInterface.local_strategy(sender_behavior, t)
+        A = StrategyInterface.support(ls)
+        P = StrategyInterface.probabilities(ls)
 
         length(A) == length(P) || throw(ArgumentError(
             "Local sender strategy support/probability lengths do not match for sender type $t."
@@ -158,13 +158,13 @@ function induced_message_distribution(prior, sender_behavior, sender_player::Int
     end
 
     isempty(order) && throw(ArgumentError(
-        "Induced message distribution is empty; sender local decision rule must have nonempty support."
+        "Induced message distribution is empty; sender local strategy must have nonempty support."
     ))
 
     msg_keys = Tuple(order)
     msg_vals = ntuple(i -> msg_prob[order[i]], length(order))
 
-    return DirectDecisionRules.FiniteMixedDecisionRule(msg_keys, msg_vals)
+    return LocalStrategies.FiniteMixedStrategy(msg_keys, msg_vals)
 end
 
 Classification.is_signaling_game(::SignalingProfile) = true

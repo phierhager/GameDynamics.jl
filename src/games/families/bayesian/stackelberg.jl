@@ -2,8 +2,8 @@ module Stackelberg
 
 using ..NormalForm
 using ..Classification
-using ..DirectDecisionRules
-using ..DecisionRulesInterface
+using ..LocalStrategies
+using ..StrategyInterface
 
 export StackelbergGame
 export leader, follower
@@ -44,11 +44,11 @@ end
 @inline follower(g::StackelbergGame) = g.follower
 
 @inline function _degenerate_mixed(action::Integer)
-    return DirectDecisionRules.FiniteMixedDecisionRule((action,), (1.0,))
+    return LocalStrategies.FiniteMixedStrategy((action,), (1.0,))
 end
 
-function _validate_strategy_domain(s::DirectDecisionRules.FiniteMixedDecisionRule, n::Int, who::AbstractString)
-    A = DecisionRulesInterface.support(s)
+function _validate_strategy_domain(s::LocalStrategies.FiniteMixedStrategy, n::Int, who::AbstractString)
+    A = StrategyInterface.support(s)
     isempty(A) && throw(ArgumentError("$who strategy must have nonempty support."))
 
     @inbounds for i in eachindex(A)
@@ -77,7 +77,7 @@ used in `_argmax_all`, so `FAVOR_FOLLOWER_TIE_BREAK` currently selects the first
 best-response representative.
 """
 function follower_best_response(g::StackelbergGame,
-                                leader_strategy::DirectDecisionRules.FiniteMixedDecisionRule;
+                                leader_strategy::LocalStrategies.FiniteMixedStrategy;
                                 tie_break::Symbol = ARBITRARY_TIE_BREAK)
     base = g.base_game
     li = g.leader
@@ -86,9 +86,9 @@ function follower_best_response(g::StackelbergGame,
     _validate_strategy_domain(leader_strategy, base.action_sizes[li], "Leader")
 
     prof = if li == 1
-        (leader_strategy, DirectDecisionRules.FiniteMixedDecisionRule(ones(base.action_sizes[2])))
+        (leader_strategy, LocalStrategies.FiniteMixedStrategy(ones(base.action_sizes[2])))
     else
-        (DirectDecisionRules.FiniteMixedDecisionRule(ones(base.action_sizes[1])), leader_strategy)
+        (LocalStrategies.FiniteMixedStrategy(ones(base.action_sizes[1])), leader_strategy)
     end
 
     vals = NormalForm.best_response_values(base, fi, prof)
@@ -130,7 +130,7 @@ Evaluate the leader payoff induced by a leader mixed strategy under follower
 best-response behavior and the given tie-breaking convention.
 """
 function leader_value(g::StackelbergGame,
-                      leader_strategy::DirectDecisionRules.FiniteMixedDecisionRule;
+                      leader_strategy::LocalStrategies.FiniteMixedStrategy;
                       tie_break::Symbol = ARBITRARY_TIE_BREAK)
     _validate_strategy_domain(leader_strategy, g.base_game.action_sizes[g.leader], "Leader")
 

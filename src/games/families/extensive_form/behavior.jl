@@ -5,8 +5,8 @@ using ..Kernel
 using ..Exact
 using ..Interfaces
 using ..Infosets
-using ..DecisionRulesInterface
-using ..DecisionRuleProfiles
+using ..StrategyInterface
+using ..StrategyProfiles
 
 export local_behavior
 export behavior_action_probability
@@ -15,16 +15,16 @@ export sample_behavior_profile_action
 export is_behavior_defined
 
 local_behavior(strategy, game::Kernel.AbstractGame, state, player::Int) =
-    DecisionRulesInterface.local_rule(strategy, Infosets.infoset(game, state, player))
+    StrategyInterface.local_strategy(strategy, Infosets.infoset(game, state, player))
 
 behavior_action_probability(strategy, game::Kernel.AbstractGame, state, player::Int, action) =
-    DecisionRulesInterface.action_probability(strategy, Infosets.infoset(game, state, player), action)
+    StrategyInterface.action_probability(strategy, Infosets.infoset(game, state, player), action)
 
 sample_behavior_action(strategy, game::Kernel.AbstractGame, state, player::Int,
                        rng::AbstractRNG = Random.default_rng()) =
-    DecisionRulesInterface.sample_action(strategy, Infosets.infoset(game, state, player), rng)
+    StrategyInterface.sample_action(strategy, Infosets.infoset(game, state, player), rng)
 
-function sample_behavior_profile_action(profile::Tuple{Vararg{DecisionRulesInterface.AbstractDecisionRule,N}},
+function sample_behavior_profile_action(profile::Tuple{Vararg{StrategyInterface.AbstractStrategy,N}},
                                         game::Kernel.AbstractGame,
                                         state,
                                         rng::AbstractRNG = Random.default_rng()) where {N}
@@ -66,11 +66,11 @@ function sample_behavior_profile_action(profile::Tuple{Vararg{DecisionRulesInter
     end
 end
 
-sample_behavior_profile_action(profile::DecisionRuleProfiles.DecisionRuleProfile{N},
+sample_behavior_profile_action(profile::StrategyProfiles.StrategyProfile{N},
                                game::Kernel.AbstractGame,
                                state,
                                rng::AbstractRNG = Random.default_rng()) where {N} =
-    sample_behavior_profile_action(profile.rules, game, state, rng)
+    sample_behavior_profile_action(profile.strategies, game, state, rng)
 
 function is_behavior_defined(strategy, game::Kernel.AbstractGame, state, player::Int)
     try

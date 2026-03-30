@@ -2,208 +2,208 @@ using Test
 using Random
 
 using GameLab
-using GameLab.DecisionRulesInterface
-using GameLab.DirectDecisionRules
-using GameLab.LookupDecisionRules
+using GameLab.StrategyInterface
+using GameLab.LocalStrategies
+using GameLab.IndexedStrategies
 
-@testset "LookupDecisionRules" begin
-    @testset "CallableLookupRule" begin
+@testset "IndexedStrategies" begin
+    @testset "CallableIndexedStrategy" begin
         @testset "constructor sets context kind and default internal state" begin
             # Arrange
-            f = ctx -> DirectDecisionRules.DeterministicDecisionRule(ctx)
+            f = ctx -> LocalStrategies.DeterministicStrategy(ctx)
 
             # Act
-            rule = LookupDecisionRules.CallableLookupRule(
-                DecisionRulesInterface.CustomContext,
+            strategy = IndexedStrategies.CallableIndexedStrategy(
+                StrategyInterface.CustomContext,
                 f,
             )
 
             # Assert
-            @test DecisionRulesInterface.context_kind(rule) isa DecisionRulesInterface.CustomContext
-            @test DecisionRulesInterface.internal_state_class(rule) isa DecisionRulesInterface.Stateless
+            @test StrategyInterface.context_kind(strategy) isa StrategyInterface.CustomContext
+            @test StrategyInterface.internal_state_class(strategy) isa StrategyInterface.Stateless
         end
 
         @testset "constructor preserves explicit internal state" begin
             # Arrange
-            f = ctx -> DirectDecisionRules.DeterministicDecisionRule(ctx)
+            f = ctx -> LocalStrategies.DeterministicStrategy(ctx)
 
             # Act
-            rule = LookupDecisionRules.CallableLookupRule(
-                DecisionRulesInterface.ObservationContext,
+            strategy = IndexedStrategies.CallableIndexedStrategy(
+                StrategyInterface.ObservationContext,
                 f;
-                internal_state = DecisionRulesInterface.Stateful(),
+                internal_state = StrategyInterface.Stateful(),
             )
 
             # Assert
-            @test DecisionRulesInterface.context_kind(rule) isa DecisionRulesInterface.ObservationContext
-            @test DecisionRulesInterface.internal_state_class(rule) isa DecisionRulesInterface.Stateful
+            @test StrategyInterface.context_kind(strategy) isa StrategyInterface.ObservationContext
+            @test StrategyInterface.internal_state_class(strategy) isa StrategyInterface.Stateful
         end
 
-        @testset "local_rule returns callable-produced local decision rule" begin
+        @testset "local_strategy returns callable-produced local strategy" begin
             # Arrange
-            rule = LookupDecisionRules.CallableLookupRule(
-                DecisionRulesInterface.ObservationContext,
-                obs -> DirectDecisionRules.DeterministicDecisionRule(obs + 1),
+            strategy = IndexedStrategies.CallableIndexedStrategy(
+                StrategyInterface.ObservationContext,
+                obs -> LocalStrategies.DeterministicStrategy(obs + 1),
             )
 
             # Act
-            local_r = DecisionRulesInterface.local_rule(rule, 4)
+            local_r = StrategyInterface.local_strategy(strategy, 4)
 
             # Assert
-            @test local_r isa DirectDecisionRules.DeterministicDecisionRule
+            @test local_r isa LocalStrategies.DeterministicStrategy
             @test local_r.action == 5
         end
 
-        @testset "sample_action delegates through local rule" begin
+        @testset "sample_action delegates through local strategy" begin
             # Arrange
-            rule = LookupDecisionRules.CallableLookupRule(
-                DecisionRulesInterface.ObservationContext,
-                obs -> DirectDecisionRules.DeterministicDecisionRule(obs + 10),
+            strategy = IndexedStrategies.CallableIndexedStrategy(
+                StrategyInterface.ObservationContext,
+                obs -> LocalStrategies.DeterministicStrategy(obs + 10),
             )
             rng = MersenneTwister(11)
 
             # Act
-            sampled = DecisionRulesInterface.sample_action(rule, 2, rng)
+            sampled = StrategyInterface.sample_action(strategy, 2, rng)
 
             # Assert
             @test sampled == 12
         end
 
-        @testset "action_probability delegates through local rule" begin
+        @testset "action_probability delegates through local strategy" begin
             # Arrange
-            rule = LookupDecisionRules.CallableLookupRule(
-                DecisionRulesInterface.CustomContext,
-                ctx -> DirectDecisionRules.FiniteMixedDecisionRule((ctx, :other), (0.8, 0.2)),
+            strategy = IndexedStrategies.CallableIndexedStrategy(
+                StrategyInterface.CustomContext,
+                ctx -> LocalStrategies.FiniteMixedStrategy((ctx, :other), (0.8, 0.2)),
             )
 
             # Act
-            p_hit = DecisionRulesInterface.action_probability(rule, :go, :go)
-            p_miss = DecisionRulesInterface.action_probability(rule, :go, :other)
+            p_hit = StrategyInterface.action_probability(strategy, :go, :go)
+            p_miss = StrategyInterface.action_probability(strategy, :go, :other)
 
             # Assert
             @test p_hit ≈ 0.8
             @test p_miss ≈ 0.2
         end
 
-        @testset "action_density delegates through local rule" begin
+        @testset "action_density delegates through local strategy" begin
             # Arrange
-            density_rule = DirectDecisionRules.SamplerDensityDecisionRule(
+            density_rule = LocalStrategies.SamplerDensityStrategy(
                 r -> 0.25,
                 x -> x^2,
                 0.0:0.1:1.0,
             )
-            rule = LookupDecisionRules.CallableLookupRule(
-                DecisionRulesInterface.CustomContext,
+            strategy = IndexedStrategies.CallableIndexedStrategy(
+                StrategyInterface.CustomContext,
                 _ -> density_rule,
             )
 
             # Act
-            density = DecisionRulesInterface.action_density(rule, :ctx, 3.0)
+            density = StrategyInterface.action_density(strategy, :ctx, 3.0)
 
             # Assert
             @test density == 9.0
         end
 
-        @testset "local_rule throws when callable does not return a decision rule" begin
+        @testset "local_strategy throws when callable does not return a strategy" begin
             # Arrange
-            rule = LookupDecisionRules.CallableLookupRule(
-                DecisionRulesInterface.ObservationContext,
+            strategy = IndexedStrategies.CallableIndexedStrategy(
+                StrategyInterface.ObservationContext,
                 _ -> 123,
             )
 
             # Act / Assert
-            @test_throws ArgumentError DecisionRulesInterface.local_rule(rule, :ctx)
+            @test_throws ArgumentError StrategyInterface.local_strategy(strategy, :ctx)
         end
     end
 
-    @testset "TableLookupRule" begin
+    @testset "TableIndexedStrategy" begin
         @testset "constructor sets context kind and default internal state" begin
             # Arrange
             table = Dict(
-                :left => DirectDecisionRules.DeterministicDecisionRule(:L),
-                :right => DirectDecisionRules.DeterministicDecisionRule(:R),
+                :left => LocalStrategies.DeterministicStrategy(:L),
+                :right => LocalStrategies.DeterministicStrategy(:R),
             )
 
             # Act
-            rule = LookupDecisionRules.TableLookupRule(
-                DecisionRulesInterface.CustomContext,
+            strategy = IndexedStrategies.TableIndexedStrategy(
+                StrategyInterface.CustomContext,
                 table,
             )
 
             # Assert
-            @test DecisionRulesInterface.context_kind(rule) isa DecisionRulesInterface.CustomContext
-            @test DecisionRulesInterface.internal_state_class(rule) isa DecisionRulesInterface.Stateless
+            @test StrategyInterface.context_kind(strategy) isa StrategyInterface.CustomContext
+            @test StrategyInterface.internal_state_class(strategy) isa StrategyInterface.Stateless
         end
 
         @testset "constructor preserves explicit internal state" begin
             # Arrange
             table = Dict(
-                1 => DirectDecisionRules.DeterministicDecisionRule(:a),
-                2 => DirectDecisionRules.DeterministicDecisionRule(:b),
+                1 => LocalStrategies.DeterministicStrategy(:a),
+                2 => LocalStrategies.DeterministicStrategy(:b),
             )
 
             # Act
-            rule = LookupDecisionRules.TableLookupRule(
-                DecisionRulesInterface.StateContext,
+            strategy = IndexedStrategies.TableIndexedStrategy(
+                StrategyInterface.StateContext,
                 table;
-                internal_state = DecisionRulesInterface.FiniteStateController(),
+                internal_state = StrategyInterface.FiniteStateController(),
             )
 
             # Assert
-            @test DecisionRulesInterface.context_kind(rule) isa DecisionRulesInterface.StateContext
-            @test DecisionRulesInterface.internal_state_class(rule) isa DecisionRulesInterface.FiniteStateController
+            @test StrategyInterface.context_kind(strategy) isa StrategyInterface.StateContext
+            @test StrategyInterface.internal_state_class(strategy) isa StrategyInterface.FiniteStateController
         end
 
-        @testset "local_rule returns stored rule for present key" begin
+        @testset "local_strategy returns stored strategy for present key" begin
             # Arrange
-            left_rule = DirectDecisionRules.DeterministicDecisionRule(:L)
-            right_rule = DirectDecisionRules.DeterministicDecisionRule(:R)
+            left_rule = LocalStrategies.DeterministicStrategy(:L)
+            right_rule = LocalStrategies.DeterministicStrategy(:R)
             table = Dict(:left => left_rule, :right => right_rule)
-            rule = LookupDecisionRules.TableLookupRule(
-                DecisionRulesInterface.CustomContext,
+            strategy = IndexedStrategies.TableIndexedStrategy(
+                StrategyInterface.CustomContext,
                 table,
             )
 
             # Act
-            local_r = DecisionRulesInterface.local_rule(rule, :right)
+            local_r = StrategyInterface.local_strategy(strategy, :right)
 
             # Assert
             @test local_r === right_rule
         end
 
-        @testset "sample_action delegates through stored local rule" begin
+        @testset "sample_action delegates through stored local strategy" begin
             # Arrange
             table = Dict(
-                :a => DirectDecisionRules.DeterministicDecisionRule(10),
-                :b => DirectDecisionRules.DeterministicDecisionRule(20),
+                :a => LocalStrategies.DeterministicStrategy(10),
+                :b => LocalStrategies.DeterministicStrategy(20),
             )
-            rule = LookupDecisionRules.TableLookupRule(
-                DecisionRulesInterface.CustomContext,
+            strategy = IndexedStrategies.TableIndexedStrategy(
+                StrategyInterface.CustomContext,
                 table,
             )
             rng = MersenneTwister(7)
 
             # Act
-            sampled = DecisionRulesInterface.sample_action(rule, :b, rng)
+            sampled = StrategyInterface.sample_action(strategy, :b, rng)
 
             # Assert
             @test sampled == 20
         end
 
-        @testset "action_probability delegates through stored local rule" begin
+        @testset "action_probability delegates through stored local strategy" begin
             # Arrange
             table = Dict(
-                :x => DirectDecisionRules.FiniteMixedDecisionRule((:a, :b), (0.25, 0.75)),
+                :x => LocalStrategies.FiniteMixedStrategy((:a, :b), (0.25, 0.75)),
             )
-            rule = LookupDecisionRules.TableLookupRule(
-                DecisionRulesInterface.CustomContext,
+            strategy = IndexedStrategies.TableIndexedStrategy(
+                StrategyInterface.CustomContext,
                 table,
             )
 
             # Act
-            p_a = DecisionRulesInterface.action_probability(rule, :x, :a)
-            p_b = DecisionRulesInterface.action_probability(rule, :x, :b)
-            p_c = DecisionRulesInterface.action_probability(rule, :x, :c)
+            p_a = StrategyInterface.action_probability(strategy, :x, :a)
+            p_b = StrategyInterface.action_probability(strategy, :x, :b)
+            p_c = StrategyInterface.action_probability(strategy, :x, :c)
 
             # Assert
             @test p_a ≈ 0.25
@@ -211,299 +211,299 @@ using GameLab.LookupDecisionRules
             @test p_c == 0.0
         end
 
-        @testset "action_density delegates through stored local rule" begin
+        @testset "action_density delegates through stored local strategy" begin
             # Arrange
-            density_rule = DirectDecisionRules.SamplerDensityDecisionRule(
+            density_rule = LocalStrategies.SamplerDensityStrategy(
                 r -> 0.5,
                 x -> x + 2,
                 0.0:0.5:2.0,
             )
             table = Dict(:k => density_rule)
-            rule = LookupDecisionRules.TableLookupRule(
-                DecisionRulesInterface.CustomContext,
+            strategy = IndexedStrategies.TableIndexedStrategy(
+                StrategyInterface.CustomContext,
                 table,
             )
 
             # Act
-            density = DecisionRulesInterface.action_density(rule, :k, 3.0)
+            density = StrategyInterface.action_density(strategy, :k, 3.0)
 
             # Assert
             @test density == 5.0
         end
 
-        @testset "local_rule throws KeyError for missing context" begin
+        @testset "local_strategy throws KeyError for missing context" begin
             # Arrange
-            table = Dict(:a => DirectDecisionRules.DeterministicDecisionRule(1))
-            rule = LookupDecisionRules.TableLookupRule(
-                DecisionRulesInterface.CustomContext,
+            table = Dict(:a => LocalStrategies.DeterministicStrategy(1))
+            strategy = IndexedStrategies.TableIndexedStrategy(
+                StrategyInterface.CustomContext,
                 table,
             )
 
             # Act / Assert
-            @test_throws KeyError DecisionRulesInterface.local_rule(rule, :missing)
+            @test_throws KeyError StrategyInterface.local_strategy(strategy, :missing)
         end
     end
 
-    @testset "DenseLookupRule" begin
+    @testset "DenseIndexedStrategy" begin
         @testset "constructor sets context kind and default internal state" begin
             # Arrange
             table = (
-                DirectDecisionRules.DeterministicDecisionRule(:a),
-                DirectDecisionRules.DeterministicDecisionRule(:b),
+                LocalStrategies.DeterministicStrategy(:a),
+                LocalStrategies.DeterministicStrategy(:b),
             )
 
             # Act
-            rule = LookupDecisionRules.DenseLookupRule(
-                DecisionRulesInterface.StateContext,
+            strategy = IndexedStrategies.DenseIndexedStrategy(
+                StrategyInterface.StateContext,
                 table,
             )
 
             # Assert
-            @test DecisionRulesInterface.context_kind(rule) isa DecisionRulesInterface.StateContext
-            @test DecisionRulesInterface.internal_state_class(rule) isa DecisionRulesInterface.Stateless
+            @test StrategyInterface.context_kind(strategy) isa StrategyInterface.StateContext
+            @test StrategyInterface.internal_state_class(strategy) isa StrategyInterface.Stateless
         end
 
         @testset "constructor preserves explicit internal state" begin
             # Arrange
             table = (
-                DirectDecisionRules.DeterministicDecisionRule(1),
-                DirectDecisionRules.DeterministicDecisionRule(2),
+                LocalStrategies.DeterministicStrategy(1),
+                LocalStrategies.DeterministicStrategy(2),
             )
 
             # Act
-            rule = LookupDecisionRules.DenseLookupRule(
-                DecisionRulesInterface.StateContext,
+            strategy = IndexedStrategies.DenseIndexedStrategy(
+                StrategyInterface.StateContext,
                 table;
-                internal_state = DecisionRulesInterface.Stateful(),
+                internal_state = StrategyInterface.Stateful(),
             )
 
             # Assert
-            @test DecisionRulesInterface.context_kind(rule) isa DecisionRulesInterface.StateContext
-            @test DecisionRulesInterface.internal_state_class(rule) isa DecisionRulesInterface.Stateful
+            @test StrategyInterface.context_kind(strategy) isa StrategyInterface.StateContext
+            @test StrategyInterface.internal_state_class(strategy) isa StrategyInterface.Stateful
         end
 
-        @testset "local_rule returns tuple-indexed local rule" begin
+        @testset "local_strategy returns tuple-indexed local strategy" begin
             # Arrange
-            first_rule = DirectDecisionRules.DeterministicDecisionRule(:left)
-            second_rule = DirectDecisionRules.DeterministicDecisionRule(:right)
-            rule = LookupDecisionRules.DenseLookupRule(
-                DecisionRulesInterface.StateContext,
+            first_rule = LocalStrategies.DeterministicStrategy(:left)
+            second_rule = LocalStrategies.DeterministicStrategy(:right)
+            strategy = IndexedStrategies.DenseIndexedStrategy(
+                StrategyInterface.StateContext,
                 (first_rule, second_rule),
             )
 
             # Act
-            local1 = DecisionRulesInterface.local_rule(rule, 1)
-            local2 = DecisionRulesInterface.local_rule(rule, 2)
+            local1 = StrategyInterface.local_strategy(strategy, 1)
+            local2 = StrategyInterface.local_strategy(strategy, 2)
 
             # Assert
             @test local1 === first_rule
             @test local2 === second_rule
         end
 
-        @testset "sample_action delegates through indexed local rule" begin
+        @testset "sample_action delegates through indexed local strategy" begin
             # Arrange
-            rule = LookupDecisionRules.DenseLookupRule(
-                DecisionRulesInterface.StateContext,
+            strategy = IndexedStrategies.DenseIndexedStrategy(
+                StrategyInterface.StateContext,
                 (
-                    DirectDecisionRules.DeterministicDecisionRule(:x),
-                    DirectDecisionRules.DeterministicDecisionRule(:y),
+                    LocalStrategies.DeterministicStrategy(:x),
+                    LocalStrategies.DeterministicStrategy(:y),
                 ),
             )
             rng = MersenneTwister(13)
 
             # Act
-            sampled = DecisionRulesInterface.sample_action(rule, 2, rng)
+            sampled = StrategyInterface.sample_action(strategy, 2, rng)
 
             # Assert
             @test sampled == :y
         end
 
-        @testset "action_probability delegates through indexed local rule" begin
+        @testset "action_probability delegates through indexed local strategy" begin
             # Arrange
-            rule = LookupDecisionRules.DenseLookupRule(
-                DecisionRulesInterface.StateContext,
+            strategy = IndexedStrategies.DenseIndexedStrategy(
+                StrategyInterface.StateContext,
                 (
-                    DirectDecisionRules.FiniteMixedDecisionRule((:a, :b), (0.6, 0.4)),
-                    DirectDecisionRules.FiniteMixedDecisionRule((:c, :d), (0.1, 0.9)),
+                    LocalStrategies.FiniteMixedStrategy((:a, :b), (0.6, 0.4)),
+                    LocalStrategies.FiniteMixedStrategy((:c, :d), (0.1, 0.9)),
                 ),
             )
 
             # Act
-            p1 = DecisionRulesInterface.action_probability(rule, 1, :a)
-            p2 = DecisionRulesInterface.action_probability(rule, 2, :d)
+            p1 = StrategyInterface.action_probability(strategy, 1, :a)
+            p2 = StrategyInterface.action_probability(strategy, 2, :d)
 
             # Assert
             @test p1 ≈ 0.6
             @test p2 ≈ 0.9
         end
 
-        @testset "action_density delegates through indexed local rule" begin
+        @testset "action_density delegates through indexed local strategy" begin
             # Arrange
-            density_rule_1 = DirectDecisionRules.SamplerDensityDecisionRule(
+            density_rule_1 = LocalStrategies.SamplerDensityStrategy(
                 r -> 0.1,
                 x -> x,
                 0:1,
             )
-            density_rule_2 = DirectDecisionRules.SamplerDensityDecisionRule(
+            density_rule_2 = LocalStrategies.SamplerDensityStrategy(
                 r -> 0.2,
                 x -> 3x,
                 0:1,
             )
-            rule = LookupDecisionRules.DenseLookupRule(
-                DecisionRulesInterface.StateContext,
+            strategy = IndexedStrategies.DenseIndexedStrategy(
+                StrategyInterface.StateContext,
                 (density_rule_1, density_rule_2),
             )
 
             # Act
-            density = DecisionRulesInterface.action_density(rule, 2, 4.0)
+            density = StrategyInterface.action_density(strategy, 2, 4.0)
 
             # Assert
             @test density == 12.0
         end
 
-        @testset "local_rule throws BoundsError for invalid integer context" begin
+        @testset "local_strategy throws BoundsError for invalid integer context" begin
             # Arrange
-            rule = LookupDecisionRules.DenseLookupRule(
-                DecisionRulesInterface.StateContext,
+            strategy = IndexedStrategies.DenseIndexedStrategy(
+                StrategyInterface.StateContext,
                 (
-                    DirectDecisionRules.DeterministicDecisionRule(:a),
-                    DirectDecisionRules.DeterministicDecisionRule(:b),
+                    LocalStrategies.DeterministicStrategy(:a),
+                    LocalStrategies.DeterministicStrategy(:b),
                 ),
             )
 
             # Act / Assert
-            @test_throws BoundsError DecisionRulesInterface.local_rule(rule, 0)
-            @test_throws BoundsError DecisionRulesInterface.local_rule(rule, 3)
+            @test_throws BoundsError StrategyInterface.local_strategy(strategy, 0)
+            @test_throws BoundsError StrategyInterface.local_strategy(strategy, 3)
         end
     end
 
-    @testset "DenseVectorLookupRule" begin
+    @testset "DenseVectorIndexedStrategy" begin
         @testset "constructor sets context kind and default internal state" begin
             # Arrange
             table = [
-                DirectDecisionRules.DeterministicDecisionRule(:a),
-                DirectDecisionRules.DeterministicDecisionRule(:b),
+                LocalStrategies.DeterministicStrategy(:a),
+                LocalStrategies.DeterministicStrategy(:b),
             ]
 
             # Act
-            rule = LookupDecisionRules.DenseVectorLookupRule(
-                DecisionRulesInterface.StateContext,
+            strategy = IndexedStrategies.DenseVectorIndexedStrategy(
+                StrategyInterface.StateContext,
                 table,
             )
 
             # Assert
-            @test DecisionRulesInterface.context_kind(rule) isa DecisionRulesInterface.StateContext
-            @test DecisionRulesInterface.internal_state_class(rule) isa DecisionRulesInterface.Stateless
+            @test StrategyInterface.context_kind(strategy) isa StrategyInterface.StateContext
+            @test StrategyInterface.internal_state_class(strategy) isa StrategyInterface.Stateless
         end
 
         @testset "constructor preserves explicit internal state" begin
             # Arrange
             table = [
-                DirectDecisionRules.DeterministicDecisionRule(1),
-                DirectDecisionRules.DeterministicDecisionRule(2),
+                LocalStrategies.DeterministicStrategy(1),
+                LocalStrategies.DeterministicStrategy(2),
             ]
 
             # Act
-            rule = LookupDecisionRules.DenseVectorLookupRule(
-                DecisionRulesInterface.StateContext,
+            strategy = IndexedStrategies.DenseVectorIndexedStrategy(
+                StrategyInterface.StateContext,
                 table;
-                internal_state = DecisionRulesInterface.FiniteStateController(),
+                internal_state = StrategyInterface.FiniteStateController(),
             )
 
             # Assert
-            @test DecisionRulesInterface.context_kind(rule) isa DecisionRulesInterface.StateContext
-            @test DecisionRulesInterface.internal_state_class(rule) isa DecisionRulesInterface.FiniteStateController
+            @test StrategyInterface.context_kind(strategy) isa StrategyInterface.StateContext
+            @test StrategyInterface.internal_state_class(strategy) isa StrategyInterface.FiniteStateController
         end
 
-        @testset "local_rule returns vector-indexed local rule" begin
+        @testset "local_strategy returns vector-indexed local strategy" begin
             # Arrange
-            first_rule = DirectDecisionRules.DeterministicDecisionRule(:left)
-            second_rule = DirectDecisionRules.DeterministicDecisionRule(:right)
-            rule = LookupDecisionRules.DenseVectorLookupRule(
-                DecisionRulesInterface.StateContext,
+            first_rule = LocalStrategies.DeterministicStrategy(:left)
+            second_rule = LocalStrategies.DeterministicStrategy(:right)
+            strategy = IndexedStrategies.DenseVectorIndexedStrategy(
+                StrategyInterface.StateContext,
                 [first_rule, second_rule],
             )
 
             # Act
-            local1 = DecisionRulesInterface.local_rule(rule, 1)
-            local2 = DecisionRulesInterface.local_rule(rule, 2)
+            local1 = StrategyInterface.local_strategy(strategy, 1)
+            local2 = StrategyInterface.local_strategy(strategy, 2)
 
             # Assert
             @test local1 === first_rule
             @test local2 === second_rule
         end
 
-        @testset "sample_action delegates through indexed local rule" begin
+        @testset "sample_action delegates through indexed local strategy" begin
             # Arrange
-            rule = LookupDecisionRules.DenseVectorLookupRule(
-                DecisionRulesInterface.StateContext,
+            strategy = IndexedStrategies.DenseVectorIndexedStrategy(
+                StrategyInterface.StateContext,
                 [
-                    DirectDecisionRules.DeterministicDecisionRule(100),
-                    DirectDecisionRules.DeterministicDecisionRule(200),
+                    LocalStrategies.DeterministicStrategy(100),
+                    LocalStrategies.DeterministicStrategy(200),
                 ],
             )
             rng = MersenneTwister(21)
 
             # Act
-            sampled = DecisionRulesInterface.sample_action(rule, 1, rng)
+            sampled = StrategyInterface.sample_action(strategy, 1, rng)
 
             # Assert
             @test sampled == 100
         end
 
-        @testset "action_probability delegates through indexed local rule" begin
+        @testset "action_probability delegates through indexed local strategy" begin
             # Arrange
-            rule = LookupDecisionRules.DenseVectorLookupRule(
-                DecisionRulesInterface.StateContext,
+            strategy = IndexedStrategies.DenseVectorIndexedStrategy(
+                StrategyInterface.StateContext,
                 [
-                    DirectDecisionRules.FiniteMixedDecisionRule((:x, :y), (0.2, 0.8)),
-                    DirectDecisionRules.FiniteMixedDecisionRule((:u, :v), (0.55, 0.45)),
+                    LocalStrategies.FiniteMixedStrategy((:x, :y), (0.2, 0.8)),
+                    LocalStrategies.FiniteMixedStrategy((:u, :v), (0.55, 0.45)),
                 ],
             )
 
             # Act
-            p1 = DecisionRulesInterface.action_probability(rule, 1, :y)
-            p2 = DecisionRulesInterface.action_probability(rule, 2, :u)
+            p1 = StrategyInterface.action_probability(strategy, 1, :y)
+            p2 = StrategyInterface.action_probability(strategy, 2, :u)
 
             # Assert
             @test p1 ≈ 0.8
             @test p2 ≈ 0.55
         end
 
-        @testset "action_density delegates through indexed local rule" begin
+        @testset "action_density delegates through indexed local strategy" begin
             # Arrange
-            density_rule_1 = DirectDecisionRules.SamplerDensityDecisionRule(
+            density_rule_1 = LocalStrategies.SamplerDensityStrategy(
                 r -> 0.3,
                 x -> x - 1,
                 0:1,
             )
-            density_rule_2 = DirectDecisionRules.SamplerDensityDecisionRule(
+            density_rule_2 = LocalStrategies.SamplerDensityStrategy(
                 r -> 0.4,
                 x -> x / 2,
                 0:1,
             )
-            rule = LookupDecisionRules.DenseVectorLookupRule(
-                DecisionRulesInterface.StateContext,
+            strategy = IndexedStrategies.DenseVectorIndexedStrategy(
+                StrategyInterface.StateContext,
                 [density_rule_1, density_rule_2],
             )
 
             # Act
-            density = DecisionRulesInterface.action_density(rule, 2, 8.0)
+            density = StrategyInterface.action_density(strategy, 2, 8.0)
 
             # Assert
             @test density == 4.0
         end
 
-        @testset "local_rule throws BoundsError for invalid integer context" begin
+        @testset "local_strategy throws BoundsError for invalid integer context" begin
             # Arrange
-            rule = LookupDecisionRules.DenseVectorLookupRule(
-                DecisionRulesInterface.StateContext,
-                [DirectDecisionRules.DeterministicDecisionRule(:x)],
+            strategy = IndexedStrategies.DenseVectorIndexedStrategy(
+                StrategyInterface.StateContext,
+                [LocalStrategies.DeterministicStrategy(:x)],
             )
 
             # Act / Assert
-            @test_throws BoundsError DecisionRulesInterface.local_rule(rule, 0)
-            @test_throws BoundsError DecisionRulesInterface.local_rule(rule, 2)
+            @test_throws BoundsError StrategyInterface.local_strategy(strategy, 0)
+            @test_throws BoundsError StrategyInterface.local_strategy(strategy, 2)
         end
     end
 end

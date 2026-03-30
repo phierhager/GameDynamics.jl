@@ -2,32 +2,32 @@ using Test
 using Random
 
 using GameLab
-using GameLab.DecisionRulesInterface
-using GameLab.DirectDecisionRules
+using GameLab.StrategyInterface
+using GameLab.LocalStrategies
 using .TestHelpers
 
-@testset "DirectDecisionRules" begin
-    @testset "DeterministicDecisionRule" begin
+@testset "LocalStrategies" begin
+    @testset "DeterministicStrategy" begin
         @testset "traits and support metadata" begin
             # Arrange
-            rule = DirectDecisionRules.DeterministicDecisionRule(:go)
+            strategy = LocalStrategies.DeterministicStrategy(:go)
 
             # Act / Assert
-            @test DecisionRulesInterface.context_kind(rule) isa DecisionRulesInterface.NoContext
-            @test DecisionRulesInterface.internal_state_class(rule) isa DecisionRulesInterface.Stateless
-            @test DecisionRulesInterface.support(rule) == (:go,)
-            @test DecisionRulesInterface.probabilities(rule) == (1.0,)
+            @test StrategyInterface.context_kind(strategy) isa StrategyInterface.NoContext
+            @test StrategyInterface.internal_state_class(strategy) isa StrategyInterface.Stateless
+            @test StrategyInterface.support(strategy) == (:go,)
+            @test StrategyInterface.probabilities(strategy) == (1.0,)
         end
 
         @testset "sampling and action_probability" begin
             # Arrange
             rng = MersenneTwister(1)
-            rule = DirectDecisionRules.DeterministicDecisionRule(:go)
+            strategy = LocalStrategies.DeterministicStrategy(:go)
 
             # Act
-            sampled = DecisionRulesInterface.sample_action(rule, rng)
-            p_hit = DecisionRulesInterface.action_probability(rule, :go)
-            p_miss = DecisionRulesInterface.action_probability(rule, :stop)
+            sampled = StrategyInterface.sample_action(strategy, rng)
+            p_hit = StrategyInterface.action_probability(strategy, :go)
+            p_miss = StrategyInterface.action_probability(strategy, :stop)
 
             # Assert
             @test sampled == :go
@@ -36,19 +36,19 @@ using .TestHelpers
         end
     end
 
-    @testset "FiniteMixedDecisionRule" begin
+    @testset "FiniteMixedStrategy" begin
         @testset "canonicalizes duplicate actions and normalizes probabilities" begin
             # Arrange
             actions = [:a, :b, :a]
             probs = (1, 1, 2)
 
             # Act
-            rule = DirectDecisionRules.FiniteMixedDecisionRule(actions, probs)
+            strategy = LocalStrategies.FiniteMixedStrategy(actions, probs)
 
             # Assert
-            @test DecisionRulesInterface.support(rule) == (:a, :b)
-            @test DecisionRulesInterface.probabilities(rule)[1] ≈ 0.75
-            @test DecisionRulesInterface.probabilities(rule)[2] ≈ 0.25
+            @test StrategyInterface.support(strategy) == (:a, :b)
+            @test StrategyInterface.probabilities(strategy)[1] ≈ 0.75
+            @test StrategyInterface.probabilities(strategy)[2] ≈ 0.25
         end
 
         @testset "index-based convenience constructor" begin
@@ -56,21 +56,21 @@ using .TestHelpers
             probs = (2, 3, 5)
 
             # Act
-            rule = DirectDecisionRules.FiniteMixedDecisionRule(probs)
+            strategy = LocalStrategies.FiniteMixedStrategy(probs)
 
             # Assert
-            @test DecisionRulesInterface.support(rule) == (1, 2, 3)
-            @test DecisionRulesInterface.probabilities(rule) == (0.2, 0.3, 0.5)
+            @test StrategyInterface.support(strategy) == (1, 2, 3)
+            @test StrategyInterface.probabilities(strategy) == (0.2, 0.3, 0.5)
         end
 
         @testset "action_probability returns exact mass for present and zero for absent" begin
             # Arrange
-            rule = DirectDecisionRules.FiniteMixedDecisionRule((:x, :y), (0.4, 0.6))
+            strategy = LocalStrategies.FiniteMixedStrategy((:x, :y), (0.4, 0.6))
 
             # Act
-            px = DecisionRulesInterface.action_probability(rule, :x)
-            py = DecisionRulesInterface.action_probability(rule, :y)
-            pz = DecisionRulesInterface.action_probability(rule, :z)
+            px = StrategyInterface.action_probability(strategy, :x)
+            py = StrategyInterface.action_probability(strategy, :y)
+            pz = StrategyInterface.action_probability(strategy, :z)
 
             # Assert
             @test px ≈ 0.4
@@ -82,11 +82,11 @@ using .TestHelpers
             # Arrange
             rng1 = MersenneTwister(55)
             rng2 = MersenneTwister(55)
-            rule = DirectDecisionRules.FiniteMixedDecisionRule((:a, :b, :c), (0.2, 0.3, 0.5))
+            strategy = LocalStrategies.FiniteMixedStrategy((:a, :b, :c), (0.2, 0.3, 0.5))
 
             # Act
-            draws1 = [DecisionRulesInterface.sample_action(rule, rng1) for _ in 1:20]
-            draws2 = [DecisionRulesInterface.sample_action(rule, rng2) for _ in 1:20]
+            draws1 = [StrategyInterface.sample_action(strategy, rng1) for _ in 1:20]
+            draws2 = [StrategyInterface.sample_action(strategy, rng2) for _ in 1:20]
 
             # Assert
             @test draws1 == draws2
@@ -94,25 +94,25 @@ using .TestHelpers
 
         @testset "constructor rejects invalid supports or probabilities" begin
             # Arrange / Act / Assert
-            @test_throws ArgumentError DirectDecisionRules.FiniteMixedDecisionRule((), ())
-            @test_throws ArgumentError DirectDecisionRules.FiniteMixedDecisionRule((:a,), (0.2, 0.8))
-            @test_throws ArgumentError DirectDecisionRules.FiniteMixedDecisionRule((:a, :b), (-1.0, 2.0))
+            @test_throws ArgumentError LocalStrategies.FiniteMixedStrategy((), ())
+            @test_throws ArgumentError LocalStrategies.FiniteMixedStrategy((:a,), (0.2, 0.8))
+            @test_throws ArgumentError LocalStrategies.FiniteMixedStrategy((:a, :b), (-1.0, 2.0))
         end
     end
 
-    @testset "ContextualDecisionRule" begin
+    @testset "ContextualStrategy" begin
         @testset "no-context sampling uses sampler(rng)" begin
             # Arrange
             rng = MersenneTwister(9)
             seen = Ref(false)
-            rule = DirectDecisionRules.unconditioned_rule(function (r)
+            strategy = LocalStrategies.unconditioned_strategy(function (r)
                 seen[] = true
                 return rand(r) < 1.0 ? :ok : :bad
             end; likelihood = a -> a == :ok ? 1.0 : 0.0)
 
             # Act
-            sampled = DecisionRulesInterface.sample_action(rule, rng)
-            prob = DecisionRulesInterface.action_probability(rule, :ok)
+            sampled = StrategyInterface.sample_action(strategy, rng)
+            prob = StrategyInterface.action_probability(strategy, :ok)
 
             # Assert
             @test seen[]
@@ -122,15 +122,15 @@ using .TestHelpers
 
         @testset "contextual sampling and probability use context-aware call signatures" begin
             # Arrange
-            rule = DirectDecisionRules.observation_rule(
+            strategy = LocalStrategies.observation_strategy(
                 (obs, rng) -> obs + 1;
                 likelihood = (obs, action) -> action == obs + 1 ? 1.0 : 0.0
             )
 
             # Act
-            sampled = DecisionRulesInterface.sample_action(rule, 10, MersenneTwister(1))
-            p_hit = DecisionRulesInterface.action_probability(rule, 10, 11)
-            p_miss = DecisionRulesInterface.action_probability(rule, 10, 9)
+            sampled = StrategyInterface.sample_action(strategy, 10, MersenneTwister(1))
+            p_hit = StrategyInterface.action_probability(strategy, 10, 11)
+            p_miss = StrategyInterface.action_probability(strategy, 10, 9)
 
             # Assert
             @test sampled == 11
@@ -144,77 +144,77 @@ using .TestHelpers
             contextual = TestHelpers.NoLikelihoodObservationRule
 
             # Act / Assert
-            @test_throws MethodError DecisionRulesInterface.action_probability(noctx, :a)
-            @test_throws MethodError DecisionRulesInterface.action_probability(contextual, :obs, :a)
+            @test_throws MethodError StrategyInterface.action_probability(noctx, :a)
+            @test_throws MethodError StrategyInterface.action_probability(contextual, :obs, :a)
         end
 
         @testset "convenience constructors set correct context kinds" begin
             # Arrange / Act / Assert
-            @test DecisionRulesInterface.context_kind(
-                DirectDecisionRules.unconditioned_rule(rng -> 1)
-            ) isa DecisionRulesInterface.NoContext
+            @test StrategyInterface.context_kind(
+                LocalStrategies.unconditioned_strategy(rng -> 1)
+            ) isa StrategyInterface.NoContext
 
-            @test DecisionRulesInterface.context_kind(
-                DirectDecisionRules.observation_rule((c, rng) -> c)
-            ) isa DecisionRulesInterface.ObservationContext
+            @test StrategyInterface.context_kind(
+                LocalStrategies.observation_strategy((c, rng) -> c)
+            ) isa StrategyInterface.ObservationContext
 
-            @test DecisionRulesInterface.context_kind(
-                DirectDecisionRules.state_rule((c, rng) -> c)
-            ) isa DecisionRulesInterface.StateContext
+            @test StrategyInterface.context_kind(
+                LocalStrategies.state_strategy((c, rng) -> c)
+            ) isa StrategyInterface.StateContext
 
-            @test DecisionRulesInterface.context_kind(
-                DirectDecisionRules.history_rule((c, rng) -> c)
-            ) isa DecisionRulesInterface.HistoryContext
+            @test StrategyInterface.context_kind(
+                LocalStrategies.history_strategy((c, rng) -> c)
+            ) isa StrategyInterface.HistoryContext
 
-            @test DecisionRulesInterface.context_kind(
-                DirectDecisionRules.infoset_rule((c, rng) -> c)
-            ) isa DecisionRulesInterface.InfosetContext
+            @test StrategyInterface.context_kind(
+                LocalStrategies.infoset_strategy((c, rng) -> c)
+            ) isa StrategyInterface.InfosetContext
 
-            @test DecisionRulesInterface.context_kind(
-                DirectDecisionRules.custom_context_rule((c, rng) -> c)
-            ) isa DecisionRulesInterface.CustomContext
+            @test StrategyInterface.context_kind(
+                LocalStrategies.custom_context_strategy((c, rng) -> c)
+            ) isa StrategyInterface.CustomContext
         end
 
         @testset "constructor preserves explicit internal state class" begin
             # Arrange
-            rule = DirectDecisionRules.observation_rule(
+            strategy = LocalStrategies.observation_strategy(
                 (obs, rng) -> obs;
-                internal_state = DecisionRulesInterface.Stateful()
+                internal_state = StrategyInterface.Stateful()
             )
 
             # Act / Assert
-            @test DecisionRulesInterface.internal_state_class(rule) isa DecisionRulesInterface.Stateful
+            @test StrategyInterface.internal_state_class(strategy) isa StrategyInterface.Stateful
         end
     end
 
-    @testset "SamplerDecisionRule and SamplerDensityDecisionRule" begin
-        @testset "sampler rule exposes domain and samples from sampler" begin
+    @testset "SamplerStrategy and SamplerDensityStrategy" begin
+        @testset "sampler strategy exposes domain and samples from sampler" begin
             # Arrange
             rng = MersenneTwister(3)
-            rule = DirectDecisionRules.SamplerDecisionRule(r -> rand(r), 0.0:0.1:1.0)
+            strategy = LocalStrategies.SamplerStrategy(r -> rand(r), 0.0:0.1:1.0)
 
             # Act
-            val = DecisionRulesInterface.sample_action(rule, rng)
-            dom = DecisionRulesInterface.support(rule)
+            val = StrategyInterface.sample_action(strategy, rng)
+            dom = StrategyInterface.support(strategy)
 
             # Assert
             @test 0.0 <= val <= 1.0
             @test dom == 0.0:0.1:1.0
-            @test DecisionRulesInterface.context_kind(rule) isa DecisionRulesInterface.NoContext
+            @test StrategyInterface.context_kind(strategy) isa StrategyInterface.NoContext
         end
 
-        @testset "sampler density rule evaluates provided density function" begin
+        @testset "sampler density strategy evaluates provided density function" begin
             # Arrange
-            rule = DirectDecisionRules.SamplerDensityDecisionRule(r -> 0.25, x -> 2x, 0.0:0.5:1.0)
+            strategy = LocalStrategies.SamplerDensityStrategy(r -> 0.25, x -> 2x, 0.0:0.5:1.0)
 
             # Act
-            val = DecisionRulesInterface.sample_action(rule, MersenneTwister(1))
-            density = DecisionRulesInterface.action_density(rule, 0.75)
+            val = StrategyInterface.sample_action(strategy, MersenneTwister(1))
+            density = StrategyInterface.action_density(strategy, 0.75)
 
             # Assert
             @test val == 0.25
             @test density == 1.5
-            @test DecisionRulesInterface.support(rule) == 0.0:0.5:1.0
+            @test StrategyInterface.support(strategy) == 0.0:0.5:1.0
         end
     end
 end

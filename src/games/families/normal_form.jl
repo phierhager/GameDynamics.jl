@@ -6,9 +6,9 @@ using ..Spaces
 using ..Exact
 using ..Spec
 using ..Classification
-using ..DecisionRulesInterface
-using ..DirectDecisionRules
-using ..JointDecisionRules
+using ..StrategyInterface
+using ..LocalStrategies
+using ..JointStrategies
 
 export NormalFormGame, NormalFormState
 export pure_payoff, expected_payoff
@@ -151,10 +151,10 @@ pure_payoff(g::NormalFormGame{N}, profile::NTuple{N,Int}) where {N} =
     ntuple(p -> Float64(g.payoffs[p][profile...]), N)
 
 function expected_payoff(g::NormalFormGame{2},
-                         profile::Tuple{DirectDecisionRules.FiniteMixedDecisionRule,DirectDecisionRules.FiniteMixedDecisionRule})
+                         profile::Tuple{LocalStrategies.FiniteMixedStrategy,LocalStrategies.FiniteMixedStrategy})
     s1, s2 = profile
-    A1, P1 = DecisionRulesInterface.support(s1), DecisionRulesInterface.probabilities(s1)
-    A2, P2 = DecisionRulesInterface.support(s2), DecisionRulesInterface.probabilities(s2)
+    A1, P1 = StrategyInterface.support(s1), StrategyInterface.probabilities(s1)
+    A2, P2 = StrategyInterface.support(s2), StrategyInterface.probabilities(s2)
 
     acc1 = 0.0
     acc2 = 0.0
@@ -172,9 +172,9 @@ function expected_payoff(g::NormalFormGame{2},
 end
 
 function expected_payoff(g::NormalFormGame{N},
-                         profile::Tuple{Vararg{DirectDecisionRules.FiniteMixedDecisionRule,N}}) where {N}
-    supports = ntuple(i -> DecisionRulesInterface.support(profile[i]), N)
-    probs = ntuple(i -> DecisionRulesInterface.probabilities(profile[i]), N)
+                         profile::Tuple{Vararg{LocalStrategies.FiniteMixedStrategy,N}}) where {N}
+    supports = ntuple(i -> StrategyInterface.support(profile[i]), N)
+    probs = ntuple(i -> StrategyInterface.probabilities(profile[i]), N)
     ranges = ntuple(i -> Base.OneTo(length(probs[i])), N)
 
     acc = zeros(Float64, N)
@@ -191,10 +191,10 @@ function expected_payoff(g::NormalFormGame{N},
     return ntuple(i -> acc[i], N)
 end
 
-function expected_payoff(g::NormalFormGame{N}, corr::JointDecisionRules.CorrelatedActionRule) where {N}
+function expected_payoff(g::NormalFormGame{N}, corr::JointStrategies.CorrelatedRecommendationDevice) where {N}
     acc = zeros(Float64, N)
-    S = DecisionRulesInterface.support(corr)
-    P = DecisionRulesInterface.probabilities(corr)
+    S = StrategyInterface.support(corr)
+    P = StrategyInterface.probabilities(corr)
 
     @inbounds for i in eachindex(P)
         profile = S[i]
@@ -208,13 +208,13 @@ end
 
 function best_response_values(g::NormalFormGame{2},
                               player::Int,
-                              profile::Tuple{DirectDecisionRules.FiniteMixedDecisionRule,DirectDecisionRules.FiniteMixedDecisionRule})
+                              profile::Tuple{LocalStrategies.FiniteMixedStrategy,LocalStrategies.FiniteMixedStrategy})
     1 <= player <= 2 || throw(ArgumentError("Invalid player index $player."))
     vals = zeros(Float64, g.action_sizes[player])
 
     if player == 1
-        A2 = DecisionRulesInterface.support(profile[2])
-        P2 = DecisionRulesInterface.probabilities(profile[2])
+        A2 = StrategyInterface.support(profile[2])
+        P2 = StrategyInterface.probabilities(profile[2])
         @inbounds for a1 in 1:g.action_sizes[1]
             acc = 0.0
             for j in eachindex(P2)
@@ -223,8 +223,8 @@ function best_response_values(g::NormalFormGame{2},
             vals[a1] = acc
         end
     else
-        A1 = DecisionRulesInterface.support(profile[1])
-        P1 = DecisionRulesInterface.probabilities(profile[1])
+        A1 = StrategyInterface.support(profile[1])
+        P1 = StrategyInterface.probabilities(profile[1])
         @inbounds for a2 in 1:g.action_sizes[2]
             acc = 0.0
             for i in eachindex(P1)
@@ -239,11 +239,11 @@ end
 
 function best_response_values(g::NormalFormGame{N},
                               player::Int,
-                              profile::Tuple{Vararg{DirectDecisionRules.FiniteMixedDecisionRule,N}}) where {N}
+                              profile::Tuple{Vararg{LocalStrategies.FiniteMixedStrategy,N}}) where {N}
     1 <= player <= N || throw(ArgumentError("Invalid player index $player."))
 
-    opp_supports = ntuple(i -> DecisionRulesInterface.support(profile[i]), N)
-    opp_probs = ntuple(i -> DecisionRulesInterface.probabilities(profile[i]), N)
+    opp_supports = ntuple(i -> StrategyInterface.support(profile[i]), N)
+    opp_probs = ntuple(i -> StrategyInterface.probabilities(profile[i]), N)
     values = zeros(Float64, g.action_sizes[player])
 
     function recurse_build(action_i, pidx, current_profile, mass)
@@ -273,7 +273,7 @@ end
 
 function best_response(g::NormalFormGame{N},
                        player::Int,
-                       profile::Tuple{Vararg{DirectDecisionRules.FiniteMixedDecisionRule,N}}) where {N}
+                       profile::Tuple{Vararg{LocalStrategies.FiniteMixedStrategy,N}}) where {N}
     vals = best_response_values(g, player, profile)
     best_idx = argmax(vals)
     return best_idx, vals[best_idx]

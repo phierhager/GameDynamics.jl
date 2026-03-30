@@ -29,15 +29,15 @@ include("games/spaces.jl")
 include("games/enumerative.jl")
 
 # ------------------------------------------------------------------------------
-# Decision rules
+# Strategies
 # ------------------------------------------------------------------------------
 
-include("decision_rules/interface.jl")
-include("decision_rules/internal_utils.jl")
-include("decision_rules/direct_rules.jl")
-include("decision_rules/lookup_rules.jl")
-include("decision_rules/profiles.jl")
-include("decision_rules/joint_rules.jl")
+include("strategies/interface.jl")
+include("strategies/internal/utils.jl")
+include("strategies/local.jl")
+include("strategies/indexed.jl")
+include("strategies/profiles.jl")
+include("strategies/joint.jl")
 
 # ------------------------------------------------------------------------------
 # Extensive-form helpers needed by runtime and compilation
@@ -67,7 +67,7 @@ include("games/families/extensive_form/behavior.jl")
 
 include("runtime/environment.jl")
 include("runtime/trajectories.jl")
-include("runtime/rule_execution.jl")
+include("runtime/execution.jl")
 include("runtime/rollouts.jl")
 
 # ------------------------------------------------------------------------------
@@ -242,12 +242,12 @@ const _PUBLIC_MODULES = (
     Spaces,
     Enumerative,
 
-    DecisionRulesInterface,
-    DecisionRuleInternalUtils,
-    DirectDecisionRules,
-    LookupDecisionRules,
-    DecisionRuleProfiles,
-    JointDecisionRules,
+    StrategyInterface,
+    StrategyInternalUtils,
+    LocalStrategies,
+    IndexedStrategies,
+    StrategyProfiles,
+    JointStrategies,
 
     Interfaces,
     ExtensiveFormInfosets,
@@ -256,7 +256,7 @@ const _PUBLIC_MODULES = (
 
     RuntimeEnvironment,
     RuntimeTrajectories,
-    RuleExecution,
+    RuntimeStrategyExecution,
     RuntimeRollouts,
 
     Classification,

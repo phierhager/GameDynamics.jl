@@ -1,4 +1,4 @@
-module DecisionRuleInternalUtils
+module StrategyInternalUtils
 
 export normalize_probs
 export canonicalize_support_probs

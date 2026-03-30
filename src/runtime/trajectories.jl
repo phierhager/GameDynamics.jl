@@ -4,12 +4,12 @@ export AbstractTrajectoryRecord
 export AbstractTransition
 export AbstractTrajectory
 
-export BanditStep
+export BanditTransition
 export StateTransition
 export ObservationTransition
 export StateObservationTransition
 
-export JointBanditStep
+export JointBanditTransition
 export JointStateTransition
 export JointObservationTransition
 export JointStateObservationTransition
@@ -52,20 +52,20 @@ Interaction record for stateless / unconditioned control.
 Best match:
 - bandits
 - stateless repeated play
-- unconditioned decision rules
+- unconditioned strategies
 """
-struct BanditStep{A,R} <: AbstractTransition
+struct BanditTransition{A,R} <: AbstractTransition
     action::A
     reward::R
     done::Bool
 end
 
 """
-Transition for state-conditioned control.
+Transition for state-conditioned interaction.
 
 Best match:
 - MDP-style control
-- state-conditioned decision rules
+- state-conditioned strategies
 """
 struct StateTransition{S,A,R} <: AbstractTransition
     state::S
@@ -80,7 +80,7 @@ Transition for observation-conditioned / partial-observation control.
 
 Best match:
 - POMDP-style control
-- observation-conditioned decision rules
+- observation-conditioned strategies
 """
 struct ObservationTransition{O,A,R} <: AbstractTransition
     observation::O
@@ -94,7 +94,7 @@ end
 Transition carrying both latent state and observation.
 
 Best match:
-- training with simulator state access while the acting rule uses observations
+- training with simulator state access while the acting strategy uses observations
 - actor-critic / model-based diagnostics in partially observed settings
 """
 struct StateObservationTransition{S,O,A,R} <: AbstractTransition
@@ -115,10 +115,10 @@ end
 Joint stateless interaction.
 
 Best match:
-- unconditioned decision-rule profiles
+- unconditioned strategy profiles
 - repeated-play / matrix-game logs
 """
-struct JointBanditStep{A,R} <: AbstractTransition
+struct JointBanditTransition{A,R} <: AbstractTransition
     action::A
     reward::R
     done::Bool
@@ -128,7 +128,7 @@ end
 Joint transition with full state.
 
 Best match:
-- state-conditioned decision-rule profiles
+- state-conditioned strategy profiles
 - Markov games with state-based centralized training/control
 """
 struct JointStateTransition{S,A,R} <: AbstractTransition
@@ -143,7 +143,7 @@ end
 Joint transition with local/joint observations.
 
 Best match:
-- observation-conditioned decision-rule profiles
+- observation-conditioned strategy profiles
 - POSG / Dec-POMDP style decentralized execution
 """
 struct JointObservationTransition{O,A,R} <: AbstractTransition

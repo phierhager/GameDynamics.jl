@@ -1,8 +1,8 @@
-module DecisionRulesInterface
+module StrategyInterface
 
 using Random
 
-export AbstractDecisionRule
+export AbstractStrategy
 
 export AbstractContextKind
 export NoContext
@@ -25,62 +25,62 @@ export probabilities
 export sample_action
 export action_probability
 export action_density
-export local_rule
+export local_strategy
 
 export expected_value
 export monte_carlo_expectation
 
 """
-Stable public root for decision rules.
+Stable public root for strategies.
 
-A decision rule is the library's unified action-selection abstraction. It covers
-what RL often calls a policy and what game theory often calls a strategy.
+A strategy is the library's unified action-selection abstraction.
+In reinforcement learning, this corresponds to what is often called a policy.
 
 This subsystem is intentionally representation-focused:
-- it describes how rules are represented and queried
+- it describes how strategies are represented and queried
 - it does not define where contexts come from
 - it does not define how internal controller state is threaded across time
 
 Those runtime responsibilities belong elsewhere.
 """
-abstract type AbstractDecisionRule end
+abstract type AbstractStrategy end
 
 # ----------------------------------------------------------------------
 # Context kinds
 # ----------------------------------------------------------------------
 
 """
-Trait axis describing what kind of context a decision rule expects at query time.
+Trait axis describing what kind of context a strategy expects at query time.
 """
 abstract type AbstractContextKind end
 
 """
-Rule takes no context at query time.
+Strategy takes no context at query time.
 """
 struct NoContext <: AbstractContextKind end
 
 """
-Rule is queried on the true underlying state.
+Strategy is queried on the true underlying state.
 """
 struct StateContext <: AbstractContextKind end
 
 """
-Rule is queried on the current observation.
+Strategy is queried on the current observation.
 """
 struct ObservationContext <: AbstractContextKind end
 
 """
-Rule is queried on a history object.
+Strategy is queried on a history object.
 """
 struct HistoryContext <: AbstractContextKind end
 
 """
-Rule is queried on an infoset-like object.
+Strategy is queried on an infoset-like object.
 """
 struct InfosetContext <: AbstractContextKind end
 
 """
-Rule is queried on a user-defined custom context object.
+Strategy is queried on a user-defined custom context object.
 """
 struct CustomContext <: AbstractContextKind end
 
@@ -89,7 +89,7 @@ struct CustomContext <: AbstractContextKind end
 # ----------------------------------------------------------------------
 
 """
-Trait axis describing whether the rule maintains internal controller state beyond
+Trait axis describing whether the strategy maintains internal controller state beyond
 the supplied query context.
 
 This is currently descriptive metadata, not an execution protocol.
@@ -97,17 +97,17 @@ This is currently descriptive metadata, not an execution protocol.
 abstract type AbstractInternalStateClass end
 
 """
-Rule has no internal controller state beyond the supplied query context.
+Strategy has no internal controller state beyond the supplied query context.
 """
 struct Stateless <: AbstractInternalStateClass end
 
 """
-Rule may maintain unrestricted internal controller state.
+Strategy may maintain unrestricted internal controller state.
 """
 struct Stateful <: AbstractInternalStateClass end
 
 """
-Rule maintains finite internal controller state.
+Strategy maintains finite internal controller state.
 
 This is currently descriptive metadata, not a concrete controller API.
 """
@@ -118,60 +118,60 @@ struct FiniteStateController <: AbstractInternalStateClass end
 # ----------------------------------------------------------------------
 
 """
-Return the declared context kind for a decision-rule type.
+Return the declared context kind for a strategy type.
 """
-function context_kind(::Type{<:AbstractDecisionRule})
-    throw(MethodError(context_kind, (AbstractDecisionRule,)))
+function context_kind(::Type{<:AbstractStrategy})
+    throw(MethodError(context_kind, (AbstractStrategy,)))
 end
 
-context_kind(rule::AbstractDecisionRule) = context_kind(typeof(rule))
+context_kind(strategy::AbstractStrategy) = context_kind(typeof(strategy))
 
 """
-Return the declared internal-state class for a decision-rule type.
+Return the declared internal-state class for a strategy type.
 """
-function internal_state_class(::Type{<:AbstractDecisionRule})
-    throw(MethodError(internal_state_class, (AbstractDecisionRule,)))
+function internal_state_class(::Type{<:AbstractStrategy})
+    throw(MethodError(internal_state_class, (AbstractStrategy,)))
 end
 
-internal_state_class(rule::AbstractDecisionRule) = internal_state_class(typeof(rule))
+internal_state_class(strategy::AbstractStrategy) = internal_state_class(typeof(strategy))
 
 # ----------------------------------------------------------------------
 # Capability interfaces
 # ----------------------------------------------------------------------
 
 """
-Return the finite support of a rule, when such a notion is available.
+Return the finite support of a strategy, when such a notion is available.
 
-For some non-enumerated rules this may instead denote an admissible domain.
+For some non-enumerated strategies this may instead denote an admissible domain.
 """
 function support end
 
 """
-Return probabilities aligned with `support(rule)`, when such a notion is available.
+Return probabilities aligned with `support(strategy)`, when such a notion is available.
 """
 function probabilities end
 
 """
-Sample an action from the rule.
+Sample an action from the strategy.
 
 Expected signatures include:
-- `sample_action(rule, rng)` for `NoContext` rules
-- `sample_action(rule, context, rng)` for contextual rules
+- `sample_action(strategy, rng)` for `NoContext` strategies
+- `sample_action(strategy, context, rng)` for contextual strategies
 """
 function sample_action end
 
-sample_action(rule::AbstractDecisionRule) =
-    sample_action(rule, Random.default_rng())
+sample_action(strategy::AbstractStrategy) =
+    sample_action(strategy, Random.default_rng())
 
-sample_action(rule::AbstractDecisionRule, context) =
-    sample_action(rule, context, Random.default_rng())
+sample_action(strategy::AbstractStrategy, context) =
+    sample_action(strategy, context, Random.default_rng())
 
 """
 Return the action probability for the queried input.
 
 Examples:
-- `action_probability(rule, action)`
-- `action_probability(rule, context, action)`
+- `action_probability(strategy, action)`
+- `action_probability(strategy, context, action)`
 """
 function action_probability end
 
@@ -179,30 +179,30 @@ function action_probability end
 Return the action density for the queried input, when density is defined.
 
 Examples:
-- `action_density(rule, action)`
-- `action_density(rule, context, action)`
+- `action_density(strategy, action)`
+- `action_density(strategy, context, action)`
 """
 function action_density end
 
 """
-Return a local rule conditioned on some indexing object, when the rule is a
-container of local rules.
+Return a local strategy conditioned on some indexing object, when the strategy is a
+container of local strategies.
 """
-function local_rule end
+function local_strategy end
 
 # ----------------------------------------------------------------------
 # Generic evaluation helpers
 # ----------------------------------------------------------------------
 
 """
-Expected value under a finite-support rule.
+Expected value under a finite-support strategy.
 
-`values` must align with `support(rule)`.
+`values` must align with `support(strategy)`.
 """
-function expected_value(rule::AbstractDecisionRule, values)
-    ps = probabilities(rule)
+function expected_value(strategy::AbstractStrategy, values)
+    ps = probabilities(strategy)
     length(values) == length(ps) ||
-        throw(ArgumentError("Values must align with the decision-rule support."))
+        throw(ArgumentError("Values must align with the strategy support."))
     acc = 0.0
     @inbounds for i in eachindex(ps)
         acc += ps[i] * values[i]
@@ -211,16 +211,16 @@ function expected_value(rule::AbstractDecisionRule, values)
 end
 
 """
-Monte Carlo expectation under a sampleable rule.
+Monte Carlo expectation under a sampleable strategy.
 """
 function monte_carlo_expectation(f,
-                                 rule::AbstractDecisionRule;
+                                 strategy::AbstractStrategy;
                                  rng::AbstractRNG = Random.default_rng(),
                                  n_samples::Int = 1024)
     n_samples > 0 || throw(ArgumentError("n_samples must be positive."))
     acc = 0.0
     for _ in 1:n_samples
-        acc += f(sample_action(rule, rng))
+        acc += f(sample_action(strategy, rng))
     end
     return acc / n_samples
 end

@@ -2,7 +2,7 @@ using Test
 
 using GameLab.NormalForm
 using GameLab.Stackelberg
-using GameLab.DirectDecisionRules
+using GameLab.LocalStrategies
 using GameLab.Classification
 
 @testset "Stackelberg" begin
@@ -27,7 +27,7 @@ using GameLab.Classification
         base = NormalForm.NormalFormGame((p1, p2))
         g = Stackelberg.StackelbergGame(base, 1, 2)
 
-        leader_strategy = DirectDecisionRules.FiniteMixedDecisionRule((1,), (1.0,))
+        leader_strategy = LocalStrategies.FiniteMixedStrategy((1,), (1.0,))
         a_f, v_f = Stackelberg.follower_best_response(g, leader_strategy)
 
         @test a_f == 1
@@ -40,7 +40,7 @@ using GameLab.Classification
         base = NormalForm.NormalFormGame((p1, p2))
         g = Stackelberg.StackelbergGame(base, 1, 2)
 
-        leader_strategy = DirectDecisionRules.FiniteMixedDecisionRule((1,), (1.0,))
+        leader_strategy = LocalStrategies.FiniteMixedStrategy((1,), (1.0,))
         v = Stackelberg.leader_value(g, leader_strategy)
 
         @test isapprox(v, 5.0)
@@ -55,7 +55,7 @@ using GameLab.Classification
         base = NormalForm.NormalFormGame((p1, p2))
         g = Stackelberg.StackelbergGame(base, 1, 2)
 
-        leader_strategy = DirectDecisionRules.FiniteMixedDecisionRule((1,), (1.0,))
+        leader_strategy = LocalStrategies.FiniteMixedStrategy((1,), (1.0,))
         a_f, _ = Stackelberg.follower_best_response(
             g,
             leader_strategy;
@@ -76,11 +76,11 @@ using GameLab.Classification
         base = NormalForm.NormalFormGame((p1, p2))
         g = Stackelberg.StackelbergGame(base, 1, 2)
 
-        bad_strategy = DirectDecisionRules.FiniteMixedDecisionRule((3,), (1.0,))
+        bad_strategy = LocalStrategies.FiniteMixedStrategy((3,), (1.0,))
         @test_throws ArgumentError Stackelberg.follower_best_response(g, bad_strategy)
         @test_throws ArgumentError Stackelberg.leader_value(g, bad_strategy)
 
-        good_strategy = DirectDecisionRules.FiniteMixedDecisionRule((1,), (1.0,))
+        good_strategy = LocalStrategies.FiniteMixedStrategy((1,), (1.0,))
         @test_throws ArgumentError Stackelberg.follower_best_response(
             g,
             good_strategy;

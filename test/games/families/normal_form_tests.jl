@@ -5,7 +5,7 @@ using GameLab.Kernel
 using GameLab.Spec
 using GameLab.Classification
 using GameLab.NormalForm
-using GameLab.DirectDecisionRules
+using GameLab.LocalStrategies
 
 @testset "NormalForm" begin
     @testset "constructor and inferred metadata" begin
@@ -100,8 +100,8 @@ using GameLab.DirectDecisionRules
         p2 = [1.0 4.0; 0.0 2.0]
         g = NormalForm.NormalFormGame((p1, p2))
 
-        s1 = DirectDecisionRules.FiniteMixedDecisionRule((1, 2), (0.25, 0.75))
-        s2 = DirectDecisionRules.FiniteMixedDecisionRule((1, 2), (0.5, 0.5))
+        s1 = LocalStrategies.FiniteMixedStrategy((1, 2), (0.25, 0.75))
+        s2 = LocalStrategies.FiniteMixedStrategy((1, 2), (0.5, 0.5))
 
         v1, v2 = NormalForm.expected_payoff(g, (s1, s2))
 
@@ -122,9 +122,9 @@ using GameLab.DirectDecisionRules
 
         g = NormalForm.NormalFormGame((p1, p2, p3))
 
-        s1 = DirectDecisionRules.FiniteMixedDecisionRule((1, 2), (0.5, 0.5))
-        s2 = DirectDecisionRules.FiniteMixedDecisionRule((1, 2), (1.0, 0.0))
-        s3 = DirectDecisionRules.FiniteMixedDecisionRule((1, 2), (0.25, 0.75))
+        s1 = LocalStrategies.FiniteMixedStrategy((1, 2), (0.5, 0.5))
+        s2 = LocalStrategies.FiniteMixedStrategy((1, 2), (1.0, 0.0))
+        s3 = LocalStrategies.FiniteMixedStrategy((1, 2), (0.25, 0.75))
 
         vals = NormalForm.expected_payoff(g, (s1, s2, s3))
         @test vals isa NTuple{3,Float64}
@@ -135,7 +135,7 @@ using GameLab.DirectDecisionRules
         p2 = [4.0 1.0; 0.0 3.0]
         g = NormalForm.NormalFormGame((p1, p2))
 
-        corr = JointDecisionRules.CorrelatedActionRule(((1, 1), (2, 2)), (0.25, 0.75))
+        corr = JointStrategies.CorrelatedRecommendationDevice(((1, 1), (2, 2)), (0.25, 0.75))
         v1, v2 = NormalForm.expected_payoff(g, corr)
 
         @test isapprox(v1, 0.25 * 4.0 + 0.75 * 3.0)
@@ -147,8 +147,8 @@ using GameLab.DirectDecisionRules
         p2 = [3.0 5.0; 0.0 1.0]
         g = NormalForm.NormalFormGame((p1, p2))
 
-        s1 = DirectDecisionRules.FiniteMixedDecisionRule((1, 2), (0.5, 0.5))
-        s2 = DirectDecisionRules.FiniteMixedDecisionRule((1, 2), (0.25, 0.75))
+        s1 = LocalStrategies.FiniteMixedStrategy((1, 2), (0.5, 0.5))
+        s2 = LocalStrategies.FiniteMixedStrategy((1, 2), (0.25, 0.75))
 
         vals1 = NormalForm.best_response_values(g, 1, (s1, s2))
         vals2 = NormalForm.best_response_values(g, 2, (s1, s2))

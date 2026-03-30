@@ -5,7 +5,7 @@ using GameLab.Kernel
 using GameLab.Classification
 using GameLab.NormalForm
 using GameLab.RepeatedGames
-using GameLab.DirectDecisionRules
+using GameLab.LocalStrategies
 
 @testset "RepeatedGames" begin
     p1 = [3.0 0.0; 5.0 1.0]
@@ -51,8 +51,8 @@ using GameLab.DirectDecisionRules
     @testset "play_repeated_profile with deterministic stationary profile" begin
         g = RepeatedGames.RepeatedNormalFormGame(stage; horizon=3, discount=0.5)
 
-        s1 = DirectDecisionRules.FiniteMixedDecisionRule((2,), (1.0,))  # always action 2
-        s2 = DirectDecisionRules.FiniteMixedDecisionRule((1,), (1.0,))  # always action 1
+        s1 = LocalStrategies.FiniteMixedStrategy((2,), (1.0,))  # always action 2
+        s2 = LocalStrategies.FiniteMixedStrategy((1,), (1.0,))  # always action 1
         rng = MersenneTwister(1)
 
         totals = RepeatedGames.play_repeated_profile(g, (s1, s2), rng)
@@ -63,16 +63,16 @@ using GameLab.DirectDecisionRules
 
     @testset "play_repeated_profile rejects wrong profile length" begin
         g = RepeatedGames.RepeatedNormalFormGame(stage; horizon=2, discount=1.0)
-        s1 = DirectDecisionRules.FiniteMixedDecisionRule((1,), (1.0,))
+        s1 = LocalStrategies.FiniteMixedStrategy((1,), (1.0,))
         @test_throws ArgumentError RepeatedGames.play_repeated_profile(g, (s1,))
     end
 
-    struct GrimLikeStrategy <: DecisionRulesInterface.AbstractDecisionRule
+    struct GrimLikeStrategy <: StrategyInterface.AbstractStrategy
         cooperate_on_first::Int
         defect_after::Int
     end
 
-    DecisionRulesInterface.sample_action(s::GrimLikeStrategy, history, rng::AbstractRNG=Random.default_rng()) =
+    StrategyInterface.sample_action(s::GrimLikeStrategy, history, rng::AbstractRNG=Random.default_rng()) =
         RepeatedGames.num_rounds(history) == 0 ? s.cooperate_on_first : s.defect_after
 
     @testset "play_general_repeated_profile returns totals and realized history" begin
@@ -93,8 +93,8 @@ using GameLab.DirectDecisionRules
         @test RepeatedGames.round_actions(history, 3) == (2, 2)
     end
 
-    struct BadGeneralStrategy <: DecisionRulesInterface.AbstractDecisionRule end
-    DecisionRulesInterface.sample_action(::BadGeneralStrategy, history, rng::AbstractRNG=Random.default_rng()) = 99
+    struct BadGeneralStrategy <: StrategyInterface.AbstractStrategy end
+    StrategyInterface.sample_action(::BadGeneralStrategy, history, rng::AbstractRNG=Random.default_rng()) = 99
 
     @testset "play_general_repeated_profile rejects illegal actions" begin
         g = RepeatedGames.GeneralRepeatedNormalFormGame(stage; horizon=2, discount=1.0)

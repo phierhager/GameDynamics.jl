@@ -4,8 +4,8 @@ using Random
 using Test
 
 using GameLab
-using GameLab.DecisionRulesInterface
-using GameLab.DirectDecisionRules
+using GameLab.StrategyInterface
+using GameLab.LocalStrategies
 
 export DummyCustomContext
 export DummyStatefulRule
@@ -13,52 +13,52 @@ export DummyFiniteStateRule
 export NoLikelihoodNoContextRule
 export NoLikelihoodObservationRule
 
-struct DummyCustomContext <: DecisionRulesInterface.AbstractContextKind end
+struct DummyCustomContext <: StrategyInterface.AbstractContextKind end
 
 """
-Simple unconditioned rule with configurable metadata for profile tests.
+Simple unconditioned strategy with configurable metadata for profile tests.
 """
-struct DummyStatefulRule{A,ISC<:DecisionRulesInterface.AbstractInternalStateClass} <:
-       DecisionRulesInterface.AbstractDecisionRule
+struct DummyStatefulRule{A,ISC<:StrategyInterface.AbstractInternalStateClass} <:
+       StrategyInterface.AbstractStrategy
     action::A
     internal_state::ISC
 end
 
-DecisionRulesInterface.context_kind(::Type{<:DummyStatefulRule}) =
-    DecisionRulesInterface.NoContext()
+StrategyInterface.context_kind(::Type{<:DummyStatefulRule}) =
+    StrategyInterface.NoContext()
 
-DecisionRulesInterface.internal_state_class(::Type{<:DummyStatefulRule{A,ISC}}) where {A,ISC} =
+StrategyInterface.internal_state_class(::Type{<:DummyStatefulRule{A,ISC}}) where {A,ISC} =
     ISC()
 
-DecisionRulesInterface.sample_action(rule::DummyStatefulRule,
-                                     rng::AbstractRNG = Random.default_rng()) = rule.action
+StrategyInterface.sample_action(strategy::DummyStatefulRule,
+                                     rng::AbstractRNG = Random.default_rng()) = strategy.action
 
-DecisionRulesInterface.action_probability(rule::DummyStatefulRule, action) =
-    action == rule.action ? 1.0 : 0.0
+StrategyInterface.action_probability(strategy::DummyStatefulRule, action) =
+    action == strategy.action ? 1.0 : 0.0
 
-struct DummyFiniteStateRule{A} <: DecisionRulesInterface.AbstractDecisionRule
+struct DummyFiniteStateRule{A} <: StrategyInterface.AbstractStrategy
     action::A
 end
 
-DecisionRulesInterface.context_kind(::Type{<:DummyFiniteStateRule}) =
-    DecisionRulesInterface.NoContext()
+StrategyInterface.context_kind(::Type{<:DummyFiniteStateRule}) =
+    StrategyInterface.NoContext()
 
-DecisionRulesInterface.internal_state_class(::Type{<:DummyFiniteStateRule}) =
-    DecisionRulesInterface.FiniteStateController()
+StrategyInterface.internal_state_class(::Type{<:DummyFiniteStateRule}) =
+    StrategyInterface.FiniteStateController()
 
-DecisionRulesInterface.sample_action(rule::DummyFiniteStateRule,
-                                     rng::AbstractRNG = Random.default_rng()) = rule.action
+StrategyInterface.sample_action(strategy::DummyFiniteStateRule,
+                                     rng::AbstractRNG = Random.default_rng()) = strategy.action
 
-DecisionRulesInterface.action_probability(rule::DummyFiniteStateRule, action) =
-    action == rule.action ? 1.0 : 0.0
+StrategyInterface.action_probability(strategy::DummyFiniteStateRule, action) =
+    action == strategy.action ? 1.0 : 0.0
 
 """
-Contextual rule without likelihood, to verify MethodError behavior.
+Contextual strategy without likelihood, to verify MethodError behavior.
 """
 const NoLikelihoodNoContextRule =
-    DirectDecisionRules.unconditioned_rule(rng -> :a)
+    LocalStrategies.unconditioned_strategy(rng -> :a)
 
 const NoLikelihoodObservationRule =
-    DirectDecisionRules.observation_rule((obs, rng) -> obs)
+    LocalStrategies.observation_strategy((obs, rng) -> obs)
 
 end
