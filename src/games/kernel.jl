@@ -1,13 +1,16 @@
 module Kernel
 
 using Random
+using ..RuntimeRecords
 
-export AbstractGame, AbstractState
+export AbstractGame
+export AbstractState
 
 export NodeKind, DECISION, SIMULTANEOUS, CHANCE, TERMINAL
 
 export AbstractActionMode, IndexedActions, ExplicitActions
 export action_mode
+export has_action_mask
 export reward_type
 
 export SampleChance, ChanceOutcome
@@ -19,8 +22,11 @@ export num_players, player_ids
 export init_state, node_kind
 export legal_actions, legal_action_mask, indexed_action_count
 export step, observe, is_terminal
-export has_action_mask
 export current_player, active_players, acting_players, only_acting_player
+
+export record_type
+export make_record
+export step_record
 
 abstract type AbstractGame{N,R} end
 abstract type AbstractState end
@@ -45,11 +51,9 @@ end
 Partial simultaneous action aligned positionally with `active_players(game, state)`.
 
 Semantics:
-- `ja[i]` means the action for the `i`-th active player
+- `ja[i]` is the action for the `i`-th active player
 - it stores only actions, not player ids
 - active-player order is defined by `active_players(game, state)`
-
-This is the single kernel simultaneous-action primitive.
 """
 struct JointAction{A<:Tuple}
     actions::A
@@ -70,8 +74,11 @@ num_players(::AbstractGame{N}) where {N} = N
 reward_type(::Type{<:AbstractGame{N,R}}) where {N,R} = R
 player_ids(::AbstractGame{N}) where {N} = Base.OneTo(N)
 
-action_mode(::Type{<:AbstractGame}) = ExplicitActions
+action_mode(::Type{<:AbstractGame}) = ExplicitActions()
+action_mode(game::AbstractGame) = action_mode(typeof(game))
+
 has_action_mask(::Type{<:AbstractGame}) = false
+has_action_mask(game::AbstractGame) = has_action_mask(typeof(game))
 
 init_state(game::AbstractGame, rng::AbstractRNG = Random.default_rng()) =
     error("init_state not implemented for $(typeof(game)).")
@@ -80,11 +87,7 @@ node_kind(game::AbstractGame, state)::NodeKind =
     error("node_kind not implemented for $(typeof(game)), $(typeof(state)).")
 
 """
-Return the acting player at a `DECISION` node.
-
-Game implementations should define this only for decision nodes.
-Consumer code that wants a node-kind-agnostic answer should usually call
-`acting_players(game, state)` instead.
+Return the acting player at a decision node.
 """
 current_player(game::AbstractGame, state)::Int =
     throw(ArgumentError(
@@ -92,15 +95,12 @@ current_player(game::AbstractGame, state)::Int =
     ))
 
 """
-Return the acting players at a `SIMULTANEOUS` node.
+Return the acting players at a simultaneous node.
 
 Required invariants:
 - valid player ids
 - strictly ascending order
 - one slot per active player
-
-Consumer code that wants a node-kind-agnostic answer should usually call
-`acting_players(game, state)` instead.
 """
 active_players(game::AbstractGame, state) =
     throw(ArgumentError(
@@ -119,8 +119,11 @@ indexed_action_count(game::AbstractGame, player::Int) =
 """
 Minimal hot-path transition.
 
-Simultaneous nodes must accept the kernel partial `JointAction` whose entries align
-with `active_players(game, state)`.
+Expected return:
+- `(next_state, reward)`
+
+For simultaneous nodes, `action` must be a `JointAction` aligned with
+`active_players(game, state)`.
 """
 step(game::AbstractGame, state, action, rng::AbstractRNG = Random.default_rng()) =
     error("step not implemented for $(typeof(game)).")
@@ -157,16 +160,7 @@ end
 end
 
 """
-Return the players who are expected to act at the current node.
-
-Semantics:
-- at `DECISION` nodes, this is `(current_player(game, state),)`
-- at `SIMULTANEOUS` nodes, this is `active_players(game, state)`
-- otherwise, this is `()`
-
-This is the general public helper that consumer code should usually call.
-Game implementations should still specialize `current_player` and
-`active_players` as the node-specific kernel primitives.
+Return the players expected to act at the current node.
 """
 @inline function acting_players(game::AbstractGame, state)
     nk = node_kind(game, state)
@@ -189,9 +183,6 @@ end
 
 """
 Canonical joint-action validation path.
-
-A valid simultaneous `JointAction` must contain exactly one action for each active
-player, in the same order as `active_players(game, state)`.
 """
 function validate_joint_action(game::AbstractGame, state, ja::JointAction)
     nk = node_kind(game, state)
@@ -214,6 +205,44 @@ function validate_joint_action(game::AbstractGame, state, ja::JointAction)
     end
 
     return ja
+end
+
+# ----------------------------------------------------------------------
+# Record interface
+# ----------------------------------------------------------------------
+
+"""
+Declare the runtime record type produced by player-controlled moves.
+"""
+record_type(::Type{<:AbstractGame}) = RuntimeRecords.AbstractStepRecord
+record_type(game::AbstractGame) = record_type(typeof(game))
+
+"""
+Build the runtime record for a realized player-controlled move.
+
+Expected usage:
+- only for DECISION and SIMULTANEOUS nodes
+- never for CHANCE or TERMINAL nodes
+"""
+function make_record(game::AbstractGame, state, action, next_state, reward;
+                     done::Bool = is_terminal(game, next_state))
+    throw(MethodError(make_record, (game, state, action, next_state, reward)))
+end
+
+"""
+Execute one player-controlled move and return `(next_state, record)`.
+"""
+function step_record(game::AbstractGame, state, action,
+                     rng::AbstractRNG = Random.default_rng())
+    nk = node_kind(game, state)
+    nk == DECISION || nk == SIMULTANEOUS || throw(ArgumentError(
+        "step_record is only defined for player-controlled nodes; got $(nk)."
+    ))
+
+    next_state, reward = step(game, state, action, rng)
+    rec = make_record(game, state, action, next_state, reward;
+                      done = is_terminal(game, next_state))
+    return next_state, rec
 end
 
 end

@@ -1,9 +1,8 @@
 module ThompsonLearners
 
 using Random
-using ..Learning
 using ..LearningInterfaces
-using ..LearningSignals
+using ..RuntimeRecords
 
 export GaussianThompson
 export GaussianThompsonState
@@ -15,9 +14,9 @@ struct GaussianThompson{T} <: LearningInterfaces.AbstractLearner
     n_actions::Int
 
     function GaussianThompson(prior_mean::T,
-                            prior_precision::T,
-                            obs_precision::T,
-                            n_actions::Int) where {T}
+                              prior_precision::T,
+                              obs_precision::T,
+                              n_actions::Int) where {T}
         n_actions > 0 || throw(ArgumentError("n_actions must be positive."))
         prior_precision > zero(T) || throw(ArgumentError("prior_precision must be positive."))
         obs_precision > zero(T) || throw(ArgumentError("obs_precision must be positive."))
@@ -31,13 +30,18 @@ mutable struct GaussianThompsonState{T} <: LearningInterfaces.AbstractLearnerSta
 
     function GaussianThompsonState(l::GaussianThompson{T}) where {T}
         return new{T}(fill(l.prior_mean, l.n_actions),
-                                    fill(l.prior_precision, l.n_actions))
+                      fill(l.prior_precision, l.n_actions))
     end
 end
 
+const ThompsonBanditRecord = Union{
+    RuntimeRecords.BanditRecord,
+    RuntimeRecords.ContextBanditRecord,
+}
+
 Learning.learner_family(::GaussianThompson) = :bayesian_bandit
 LearningInterfaces.action_mode(::GaussianThompson) = :discrete_index
-LearningInterfaces.requires_feedback_type(::GaussianThompson) = LearningSignals.BanditSignal
+LearningInterfaces.requires_feedback_type(::GaussianThompson) = ThompsonBanditRecord
 LearningInterfaces.supports_action_space(::GaussianThompson) = :finite_discrete
 
 function LearningInterfaces.reset!(l::GaussianThompson, st::GaussianThompsonState)
@@ -80,9 +84,9 @@ end
 
 function LearningInterfaces.update!(l::GaussianThompson{T},
                                     st::GaussianThompsonState{T},
-                                    fb::LearningSignals.BanditSignal) where {T}
-    a = LearningSignals.chosen_action(fb)
-    y = LearningSignals.realized_utility(fb)
+                                    rec::ThompsonBanditRecord) where {T}
+    a = rec.action
+    y = rec.reward
     μ, τ = _gaussian_posterior_update!(st.posterior_mean[a], st.posterior_precision[a], y, l.obs_precision)
     st.posterior_mean[a] = μ
     st.posterior_precision[a] = τ

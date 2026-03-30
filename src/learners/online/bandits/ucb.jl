@@ -1,9 +1,9 @@
 module UCBLearners
 
 using Random
-using ..Learning
+
 using ..LearningInterfaces
-using ..LearningSignals
+using ..RuntimeRecords
 
 export UCB1
 export UCB1State
@@ -29,9 +29,14 @@ mutable struct UCB1State{T} <: LearningInterfaces.AbstractLearnerState
     end
 end
 
+const UCBBanditRecord = Union{
+    RuntimeRecords.BanditRecord,
+    RuntimeRecords.ContextBanditRecord,
+}
+
 Learning.learner_family(::UCB1) = :bandit
 LearningInterfaces.action_mode(::UCB1) = :discrete_index
-LearningInterfaces.requires_feedback_type(::UCB1) = LearningSignals.BanditSignal
+LearningInterfaces.requires_feedback_type(::UCB1) = UCBBanditRecord
 LearningInterfaces.supports_action_space(::UCB1) = :finite_discrete
 
 function LearningInterfaces.reset!(l::UCB1, st::UCB1State)
@@ -79,9 +84,9 @@ end
 
 function LearningInterfaces.update!(l::UCB1{T},
                                     st::UCB1State{T},
-                                    fb::LearningSignals.BanditSignal) where {T}
-    a = LearningSignals.chosen_action(fb)
-    u = LearningSignals.realized_utility(fb)
+                                    rec::UCBBanditRecord) where {T}
+    a = rec.action
+    u = rec.reward
     st.counts[a] += 1
     st.value_sums[a] += u
     return st

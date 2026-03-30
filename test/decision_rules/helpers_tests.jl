@@ -18,10 +18,9 @@ struct DummyCustomContext <: StrategyInterface.AbstractContextKind end
 """
 Simple unconditioned strategy with configurable metadata for profile tests.
 """
-struct DummyStatefulRule{A,ISC<:StrategyInterface.AbstractInternalStateClass} <:
+struct DummyStatefulRule{A} <:
        StrategyInterface.AbstractStrategy
     action::A
-    internal_state::ISC
 end
 
 StrategyInterface.context_kind(::Type{<:DummyStatefulRule}) =

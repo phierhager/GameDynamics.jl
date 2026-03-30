@@ -1,9 +1,9 @@
 module FTRLLearners
 
 using Random
-using ..Learning
+
 using ..LearningInterfaces
-using ..LearningSignals
+using ..RuntimeRecords
 
 export EntropicFTRL
 export EntropicFTRLState
@@ -28,9 +28,14 @@ mutable struct EntropicFTRLState{T} <: LearningInterfaces.AbstractLearnerState
     end
 end
 
+const FTRLFullInfoRecord = Union{
+    RuntimeRecords.FullInformationRecord,
+    RuntimeRecords.ContextFullInformationRecord,
+}
+
 Learning.learner_family(::EntropicFTRL) = :full_information
 LearningInterfaces.action_mode(::EntropicFTRL) = :discrete_index
-LearningInterfaces.requires_feedback_type(::EntropicFTRL) = LearningSignals.FullInformationSignal
+LearningInterfaces.requires_feedback_type(::EntropicFTRL) = FTRLFullInfoRecord
 LearningInterfaces.supports_action_space(::EntropicFTRL) = :finite_discrete
 
 function LearningInterfaces.reset!(l::EntropicFTRL, st::EntropicFTRLState)
@@ -76,8 +81,8 @@ end
 
 function LearningInterfaces.update!(l::EntropicFTRL{T},
                                     st::EntropicFTRLState{T},
-                                    fb::LearningSignals.FullInformationSignal) where {T}
-    uv = LearningSignals.utility_vector(fb)
+                                    rec::FTRLFullInfoRecord) where {T}
+    uv = rec.feedback
     length(uv) == l.n_actions || throw(ArgumentError("Utility vector length mismatch."))
     @inbounds for i in 1:l.n_actions
         st.cumulative_utilities[i] += uv[i]

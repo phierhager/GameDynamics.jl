@@ -1,7 +1,6 @@
 module TabularCompile
 
 using ..Kernel
-using ..Exact
 using ..NormalForm
 using ..ExtensiveForm
 using ..Encodings

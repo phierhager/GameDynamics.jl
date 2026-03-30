@@ -10,7 +10,6 @@ abstract type AbstractSpace end
 
 """
 Explicit finite domain.
-Good for exact metadata and small enumerated spaces.
 """
 struct FiniteSpace{T,C} <: AbstractSpace
     elements::C
@@ -52,10 +51,9 @@ struct BoxSpace{T<:Real,V<:AbstractVector{T}} <: AbstractSpace
     high::V
     function BoxSpace(low::V, high::V) where {T<:Real,V<:AbstractVector{T}}
         length(low) == length(high) ||
-            throw(ArgumentError("BoxSpace low/high must have the same length, got $(length(low)) and $(length(high))."))
+            throw(ArgumentError("BoxSpace low/high must have the same length."))
         @inbounds for i in eachindex(low, high)
-            low[i] <= high[i] ||
-                throw(ArgumentError("BoxSpace requires low <= high elementwise."))
+            low[i] <= high[i] || throw(ArgumentError("BoxSpace requires low <= high elementwise."))
         end
         new{T,V}(low, high)
     end
@@ -138,9 +136,6 @@ function sample(rng::AbstractRNG, s::SimplexSpace)
     return x ./ sum(x)
 end
 
-"""
-Returns a tuple to preserve structure and type stability.
-"""
 sample(rng::AbstractRNG, s::ProductSpace) =
     ntuple(i -> sample(rng, s.spaces[i]), length(s.spaces))
 

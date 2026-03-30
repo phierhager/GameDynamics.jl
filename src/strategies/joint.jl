@@ -6,17 +6,7 @@ using ..StrategyInternalUtils
 
 export CorrelatedRecommendationDevice
 
-"""
-Finite correlated recommendation device over joint action or recommendation tuples.
-
-Intended semantics:
-- support elements are joint tuples representing a current-stage recommendation
-  or current-stage joint action, such as `(a1, a2, ..., aN)`
-
-This object is not a local per-player strategy. It is a joint behavioral
-device over current-stage tuples.
-"""
-struct CorrelatedRecommendationDevice{S,P} <: StrategyInterface.AbstractStrategy
+struct CorrelatedRecommendationDevice{S,P} <: StrategyInterface.AbstractLocalStrategy
     joint_tuples::S
     probs::P
 
@@ -26,17 +16,11 @@ struct CorrelatedRecommendationDevice{S,P} <: StrategyInterface.AbstractStrategy
     end
 end
 
-StrategyInterface.context_kind(::Type{<:CorrelatedRecommendationDevice}) =
-    StrategyInterface.NoContext()
-
-StrategyInterface.internal_state_class(::Type{<:CorrelatedRecommendationDevice}) =
-    StrategyInterface.Stateless()
-
 StrategyInterface.support(strategy::CorrelatedRecommendationDevice) = strategy.joint_tuples
 StrategyInterface.probabilities(strategy::CorrelatedRecommendationDevice) = strategy.probs
 
 function StrategyInterface.sample_action(strategy::CorrelatedRecommendationDevice,
-                                              rng::AbstractRNG = Random.default_rng())
+                                         rng::AbstractRNG = Random.default_rng())
     r = rand(rng)
     c = 0.0
     S = StrategyInterface.support(strategy)

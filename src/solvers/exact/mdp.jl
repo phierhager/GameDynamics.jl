@@ -1,7 +1,6 @@
 module ExactMDPSolvers
 
 using ..Kernel
-using ..Exact
 using ..Encodings
 using ..TabularMDPs
 

@@ -1,7 +1,7 @@
 module LearningDiagnostics
 
 using Statistics
-using ..LearningSignals
+using ..RuntimeRecords
 
 export RunningStat
 export RunningMean
@@ -15,10 +15,6 @@ export average_reward
 export empirical_action_histogram!
 export empirical_action_frequencies!
 export utility_gap
-
-# ----------------------------------------------------------------------
-# Running scalar statistics
-# ----------------------------------------------------------------------
 
 mutable struct RunningStat{T}
     n::Int
@@ -44,19 +40,6 @@ end
 
 mean_value(s::RunningStat) = s.n == 0 ? 0.0 : s.sum / s.n
 
-# ----------------------------------------------------------------------
-# Learner trace
-# ----------------------------------------------------------------------
-
-"""
-Lightweight trace container for repeated-play diagnostics.
-
-Fields:
-- `t`: round count
-- `cumulative_utility`
-- `best_fixed_utility`: cumulative utility of best fixed action benchmark
-- `cumulative_reward`: alias-compatible scalar accumulator
-"""
 mutable struct LearnerTrace{T}
     t::Int
     cumulative_utility::T
@@ -75,30 +58,45 @@ function reset!(tr::LearnerTrace{T}) where {T}
     return tr
 end
 
-"""
-Update trace from feedback only.
+@inline function _scalar_reward(r)
+    r isa Real || throw(ArgumentError("Expected scalar reward, got $(typeof(r))."))
+    return Float64(r)
+end
 
-This path tracks realized utility / reward but not regret unless a benchmark
-utility vector is available.
-"""
-function push!(tr::LearnerTrace{T}, fb::LearningSignals.AbstractLearningSignal) where {T}
-    u = LearningSignals.realized_utility(fb)
-    tr.t += 1
-    tr.cumulative_utility += u
-    tr.cumulative_reward += u
-    return tr
+@inline function _realized_utility(rec)
+    if hasproperty(rec, :reward)
+        return _scalar_reward(getproperty(rec, :reward))
+    elseif hasproperty(rec, :feedback) && hasproperty(rec, :action)
+        fb = getproperty(rec, :feedback)
+        a = getproperty(rec, :action)
+        return Float64(fb[a])
+    else
+        throw(ArgumentError("Cannot infer realized utility from record type $(typeof(rec))."))
+    end
+end
+
+@inline function _best_fixed_utility(rec)
+    hasproperty(rec, :feedback) || return nothing
+    fb = getproperty(rec, :feedback)
+    return Float64(maximum(fb))
 end
 
 """
-Update trace from full-information feedback, accumulating best-fixed baseline.
+Update trace from runtime record only.
+Tracks realized utility / reward, and tracks best-fixed baseline when a
+full-information `feedback` field is available.
 """
-function push!(tr::LearnerTrace{T}, fb::LearningSignals.FullInformationSignal) where {T}
-    u = LearningSignals.realized_utility(fb)
-    uv = LearningSignals.utility_vector(fb)
+function push!(tr::LearnerTrace{T}, rec::RuntimeRecords.AbstractStepRecord) where {T}
+    u = _realized_utility(rec)
     tr.t += 1
     tr.cumulative_utility += u
     tr.cumulative_reward += u
-    tr.best_fixed_utility += maximum(uv)
+
+    best = _best_fixed_utility(rec)
+    if !isnothing(best)
+        tr.best_fixed_utility += best
+    end
+
     return tr
 end
 
@@ -106,27 +104,14 @@ cumulative_regret(tr::LearnerTrace) = tr.best_fixed_utility - tr.cumulative_util
 average_utility(tr::LearnerTrace) = tr.t == 0 ? 0.0 : tr.cumulative_utility / tr.t
 average_reward(tr::LearnerTrace) = tr.t == 0 ? 0.0 : tr.cumulative_reward / tr.t
 
-"""
-One-step utility gap for diagnostics.
-"""
 utility_gap(realized_u, benchmark_u) = benchmark_u - realized_u
 
-# ----------------------------------------------------------------------
-# Empirical action-use diagnostics
-# ----------------------------------------------------------------------
-
-"""
-Increment histogram counts in place from an integer action id.
-"""
 function empirical_action_histogram!(counts::AbstractVector{<:Integer}, action::Int)
     1 <= action <= length(counts) || throw(BoundsError(counts, action))
     counts[action] += 1
     return counts
 end
 
-"""
-Normalize integer histogram counts into frequencies in place.
-"""
 function empirical_action_frequencies!(dest::AbstractVector{Float64},
                                        counts::AbstractVector{<:Integer})
     length(dest) == length(counts) || throw(ArgumentError("Destination length mismatch."))

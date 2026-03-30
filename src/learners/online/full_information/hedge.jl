@@ -1,9 +1,9 @@
 module HedgeLearners
 
 using Random
-using ..Learning
+
 using ..LearningInterfaces
-using ..LearningSignals
+using ..RuntimeRecords
 
 export Hedge
 export HedgeState
@@ -17,21 +17,25 @@ struct Hedge{T} <: LearningInterfaces.AbstractLearner
         eta > zero(T) || throw(ArgumentError("eta must be positive."))
         return new{T}(eta, n_actions)
     end
-
 end
 
 mutable struct HedgeState{T} <: LearningInterfaces.AbstractLearnerState
     log_weights::Vector{T}
     probs::Vector{T}
-    
+
     function HedgeState(l::Hedge{T}) where {T}
         return new{T}(zeros(T, l.n_actions), fill(one(T) / l.n_actions, l.n_actions))
     end
 end
 
+const HedgeFullInfoRecord = Union{
+    RuntimeRecords.FullInformationRecord,
+    RuntimeRecords.ContextFullInformationRecord,
+}
+
 Learning.learner_family(::Hedge) = :full_information
 LearningInterfaces.action_mode(::Hedge) = :discrete_index
-LearningInterfaces.requires_feedback_type(::Hedge) = LearningSignals.FullInformationSignal
+LearningInterfaces.requires_feedback_type(::Hedge) = HedgeFullInfoRecord
 LearningInterfaces.supports_action_space(::Hedge) = :finite_discrete
 
 function LearningInterfaces.reset!(l::Hedge, st::HedgeState)
@@ -77,8 +81,8 @@ end
 
 function LearningInterfaces.update!(l::Hedge{T},
                                     st::HedgeState{T},
-                                    fb::LearningSignals.FullInformationSignal) where {T}
-    uv = LearningSignals.utility_vector(fb)
+                                    rec::HedgeFullInfoRecord) where {T}
+    uv = rec.feedback
     length(uv) == l.n_actions || throw(ArgumentError("Utility vector length mismatch."))
     @inbounds for i in 1:l.n_actions
         st.log_weights[i] += l.eta * uv[i]

@@ -5,10 +5,9 @@ using Random
 using ..Kernel
 using ..StrategyInterface
 using ..StrategyProfiles
-using ..ExtensiveFormInfosets
 
 export require_profile_length
-export player_context
+export player_record
 export sample_strategy_action
 export action_probability_at
 export sample_joint_action
@@ -29,83 +28,84 @@ function require_profile_length(profile::StrategyProfiles.StrategyProfile,
     return profile
 end
 
-"""
-Construct the context object that `strategy` should see for `player` at `(game, state)`.
-
-Supported built-in context kinds:
-- `NoContext`
-- `ObservationContext`
-- `StateContext`
-- `InfosetContext`
-
-`HistoryContext` and `CustomContext` are intentionally not handled generically here,
-because they require domain-specific context construction.
-"""
-function player_context(strategy::StrategyInterface.AbstractStrategy,
-                        game::Kernel.AbstractGame,
-                        state,
-                        player::Int)
-    kind = StrategyInterface.context_kind(strategy)
-
-    if kind isa StrategyInterface.NoContext
-        return nothing
-
-    elseif kind isa StrategyInterface.ObservationContext
-        return Kernel.observe(game, state, player)
-
-    elseif kind isa StrategyInterface.StateContext
-        return state
-
-    elseif kind isa StrategyInterface.InfosetContext
-        return ExtensiveFormInfosets.infoset(game, state, player)
-
-    elseif kind isa StrategyInterface.HistoryContext
-        throw(ArgumentError(
-            "Generic runtime querying cannot construct a history context. Use a domain-specific helper."
-        ))
-
-    else
-        throw(ArgumentError(
-            "Generic runtime querying does not know how to construct context kind $(typeof(kind))."
-        ))
-    end
+function require_profile_length(profile::Tuple,
+                                game::Kernel.AbstractGame)
+    return require_profile_length(StrategyProfiles.StrategyProfile(profile), game)
 end
 
 """
-Sample the action induced by `strategy` for `player` at `(game, state)`.
+Construct the runtime query object passed to a record-conditioned strategy.
+
+Default behavior:
+- record strategies see the player's current observation via
+  `Kernel.observe(game, state, player)`
+
+This is intentionally a lightweight extensibility hook. If a specific strategy
+family should instead consume infosets, full states, or another game-specific
+query object, specialize `player_record(strategy, game, state, player)` for
+that strategy type.
 """
-function sample_strategy_action(strategy::StrategyInterface.AbstractStrategy,
-                            game::Kernel.AbstractGame,
-                            state,
-                            player::Int,
-                            rng::AbstractRNG = Random.default_rng())
-    ctx = player_context(strategy, game, state, player)
-    if ctx === nothing
-        return StrategyInterface.sample_action(strategy, rng)
-    else
-        return StrategyInterface.sample_action(strategy, ctx, rng)
-    end
+function player_record(strategy::StrategyInterface.AbstractRecordStrategy,
+                       game::Kernel.AbstractGame,
+                       state,
+                       player::Int)
+    return Kernel.observe(game, state, player)
 end
 
 """
-Return the action probability induced by `strategy` for `player` at `(game, state)`.
+Sample the action induced by a local strategy for `player` at `(game, state)`.
 """
-function action_probability_at(strategy::StrategyInterface.AbstractStrategy,
+function sample_strategy_action(strategy::StrategyInterface.AbstractLocalStrategy,
+                                game::Kernel.AbstractGame,
+                                state,
+                                player::Int,
+                                rng::AbstractRNG = Random.default_rng())
+    return StrategyInterface.sample_action(strategy, rng)
+end
+
+"""
+Sample the action induced by a record-conditioned strategy for `player` at
+`(game, state)`.
+"""
+function sample_strategy_action(strategy::StrategyInterface.AbstractRecordStrategy,
+                                game::Kernel.AbstractGame,
+                                state,
+                                player::Int,
+                                rng::AbstractRNG = Random.default_rng())
+    rec = player_record(strategy, game, state, player)
+    return StrategyInterface.sample_action(strategy, rec, rng)
+end
+
+"""
+Return the action probability induced by a local strategy for `player` at
+`(game, state)`.
+"""
+function action_probability_at(strategy::StrategyInterface.AbstractLocalStrategy,
                                game::Kernel.AbstractGame,
                                state,
                                player::Int,
                                action)
-    ctx = player_context(strategy, game, state, player)
-    if ctx === nothing
-        return StrategyInterface.action_probability(strategy, action)
-    else
-        return StrategyInterface.action_probability(strategy, ctx, action)
-    end
+    return StrategyInterface.action_probability(strategy, action)
+end
+
+"""
+Return the action probability induced by a record-conditioned strategy for
+`player` at `(game, state)`.
+"""
+function action_probability_at(strategy::StrategyInterface.AbstractRecordStrategy,
+                               game::Kernel.AbstractGame,
+                               state,
+                               player::Int,
+                               action)
+    rec = player_record(strategy, game, state, player)
+    return StrategyInterface.action_probability(strategy, rec, action)
 end
 
 @inline function _check_legal_action(game, state, p::Int, a)
     legal = Kernel.legal_actions(game, state, p)
-    a in legal || throw(ArgumentError("Decision strategy produced illegal action $a for player $p."))
+    a in legal || throw(ArgumentError(
+        "Strategy produced illegal action $a for player $p."
+    ))
     return a
 end
 
@@ -114,13 +114,13 @@ Sample the current kernel action induced by a strategy profile at `(game, state)
 
 This is the runtime bridge from:
 - per-player strategies
-- game state and information structure
+- game state and observation structure
 to a kernel action usable by `Kernel.step`.
 """
 function sample_joint_action(profile::StrategyProfiles.StrategyProfile,
-                               game::Kernel.AbstractGame,
-                               state,
-                               rng::AbstractRNG = Random.default_rng())
+                             game::Kernel.AbstractGame,
+                             state,
+                             rng::AbstractRNG = Random.default_rng())
     require_profile_length(profile, game)
 
     nk = Kernel.node_kind(game, state)
@@ -137,6 +137,7 @@ function sample_joint_action(profile::StrategyProfiles.StrategyProfile,
             a = sample_strategy_action(profile[p], game, state, p, rng)
             _check_legal_action(game, state, p, a)
         end, length(aps))
+
         ja = Kernel.JointAction(acts)
         return Kernel.validate_joint_action(game, state, ja)
 
@@ -149,9 +150,9 @@ function sample_joint_action(profile::StrategyProfiles.StrategyProfile,
 end
 
 function sample_joint_action(profile::Tuple,
-                               game::Kernel.AbstractGame,
-                               state,
-                               rng::AbstractRNG = Random.default_rng())
+                             game::Kernel.AbstractGame,
+                             state,
+                             rng::AbstractRNG = Random.default_rng())
     return sample_joint_action(
         StrategyProfiles.StrategyProfile(profile),
         game,

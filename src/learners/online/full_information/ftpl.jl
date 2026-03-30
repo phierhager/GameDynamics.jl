@@ -1,9 +1,9 @@
 module FTPLLearners
 
 using Random
-using ..Learning
+
 using ..LearningInterfaces
-using ..LearningSignals
+using ..RuntimeRecords
 
 export FTPL
 export FTPLState
@@ -11,7 +11,7 @@ export FTPLState
 struct FTPL{T} <: LearningInterfaces.AbstractLearner
     eta::T
     n_actions::Int
-    
+
     function FTPL(eta::T, n_actions::Int) where {T}
         n_actions > 0 || throw(ArgumentError("n_actions must be positive."))
         eta > zero(T) || throw(ArgumentError("eta must be positive."))
@@ -28,9 +28,14 @@ mutable struct FTPLState{T} <: LearningInterfaces.AbstractLearnerState
     end
 end
 
+const FTPLFullInfoRecord = Union{
+    RuntimeRecords.FullInformationRecord,
+    RuntimeRecords.ContextFullInformationRecord,
+}
+
 Learning.learner_family(::FTPL) = :full_information
 LearningInterfaces.action_mode(::FTPL) = :discrete_index
-LearningInterfaces.requires_feedback_type(::FTPL) = LearningSignals.FullInformationSignal
+LearningInterfaces.requires_feedback_type(::FTPL) = FTPLFullInfoRecord
 LearningInterfaces.supports_action_space(::FTPL) = :finite_discrete
 
 function LearningInterfaces.reset!(l::FTPL, st::FTPLState)
@@ -67,8 +72,8 @@ end
 
 function LearningInterfaces.update!(l::FTPL{T},
                                     st::FTPLState{T},
-                                    fb::LearningSignals.FullInformationSignal) where {T}
-    uv = LearningSignals.utility_vector(fb)
+                                    rec::FTPLFullInfoRecord) where {T}
+    uv = rec.feedback
     length(uv) == l.n_actions || throw(ArgumentError("Utility vector length mismatch."))
     @inbounds for i in 1:l.n_actions
         st.cumulative_utilities[i] += uv[i]

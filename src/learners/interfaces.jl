@@ -1,7 +1,7 @@
 module LearningInterfaces
 
 using Random
-using ..Learning
+using ..RuntimeRecords
 
 export AbstractLearner
 export AbstractLearnerState
@@ -59,14 +59,12 @@ function act!(learner::AbstractLearner,
 end
 
 """
-Update learner state from typed feedback.
-
-This is the main online-learning update hook.
+Update learner state from a runtime record.
 """
 function update!(learner::AbstractLearner,
                  state::AbstractLearnerState,
-                 feedback)
-    throw(MethodError(update!, (learner, state, feedback)))
+                 record::RuntimeRecords.AbstractStepRecord)
+    throw(MethodError(update!, (learner, state, record)))
 end
 
 """
@@ -82,14 +80,9 @@ function policy!(dest,
 end
 
 """
-Declare the preferred feedback type for this learner family.
-
-Examples:
-- `LearningSignals.BanditSignal`
-- `LearningSignals.FullInformationSignal`
-- `LearningSignals.GradientSignal`
+Declare the preferred runtime-record type for this learner family.
 """
-requires_feedback_type(::AbstractLearner) = Any
+requires_feedback_type(::AbstractLearner) = RuntimeRecords.AbstractStepRecord
 
 """
 Optional capability hook describing which action-space category the learner expects.
@@ -100,10 +93,6 @@ Examples:
 - `:simplex`
 """
 supports_action_space(::AbstractLearner) = :unknown
-
-# ----------------------------------------------------------------------
-# Convenience generic helpers
-# ----------------------------------------------------------------------
 
 """
 Fallback allocation-friendly helper for policy extraction.
