@@ -1,3 +1,7 @@
+module Families
+
+using ..Kernel
+
 abstract type AbstractGameFamily end
 
 struct GenericGameFamily <: AbstractGameFamily end
@@ -8,3 +12,5 @@ struct MarkovGameFamily <: AbstractGameFamily end
 
 game_family(::Type{<:Kernel.AbstractGame}) = GenericGameFamily()
 game_family(game::Kernel.AbstractGame) = game_family(typeof(game))
+
+end

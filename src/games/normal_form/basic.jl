@@ -3,8 +3,8 @@ module NormalForm
 using Random
 using ..Kernel
 using ..RuntimeRecords
-using ..Families
 using ..Enumerative
+using ..Families
 
 export NormalFormState
 export NormalFormGame

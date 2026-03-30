@@ -33,7 +33,6 @@ const FTRLFullInfoRecord = Union{
     RuntimeRecords.ContextFullInformationRecord,
 }
 
-Learning.learner_family(::EntropicFTRL) = :full_information
 LearningInterfaces.action_mode(::EntropicFTRL) = :discrete_index
 LearningInterfaces.requires_feedback_type(::EntropicFTRL) = FTRLFullInfoRecord
 LearningInterfaces.supports_action_space(::EntropicFTRL) = :finite_discrete

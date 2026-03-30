@@ -33,7 +33,6 @@ const HedgeFullInfoRecord = Union{
     RuntimeRecords.ContextFullInformationRecord,
 }
 
-Learning.learner_family(::Hedge) = :full_information
 LearningInterfaces.action_mode(::Hedge) = :discrete_index
 LearningInterfaces.requires_feedback_type(::Hedge) = HedgeFullInfoRecord
 LearningInterfaces.supports_action_space(::Hedge) = :finite_discrete

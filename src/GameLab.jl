@@ -1,15 +1,15 @@
 module GameLab
 
 # ------------------------------------------------------------------------------
-# Core
+# Core runtime records / game kernel
 # ------------------------------------------------------------------------------
 
 include("common/records.jl")
 
 include("games/kernel.jl")
 include("games/enumerative.jl")
-include("games/families.jl")
 include("games/spaces.jl")
+include("games/families.jl")
 
 # ------------------------------------------------------------------------------
 # Strategies
@@ -24,11 +24,21 @@ include("strategies/indexed.jl")
 include("strategies/profiles.jl")
 
 # ------------------------------------------------------------------------------
-# Games
+# Core game families
 # ------------------------------------------------------------------------------
 
 include("games/normal_form/basic.jl")
 include("games/normal_form/matrix.jl")
+include("games/normal_form/stackelberg.jl")
+
+include("games/extensive_form/information_states.jl")
+include("games/extensive_form/infosets.jl")
+include("games/extensive_form/behavior.jl")
+
+include("games/bayesian/priors.jl")
+include("games/bayesian/signaling.jl")
+
+include("games/repeated/repeated.jl")
 
 # ------------------------------------------------------------------------------
 # Learners
@@ -53,7 +63,7 @@ include("utils/encodings.jl")
 include("utils/evaluation.jl")
 
 # ------------------------------------------------------------------------------
-# Tabular
+# Tabular models
 # ------------------------------------------------------------------------------
 
 include("tabular/traits.jl")
@@ -66,11 +76,10 @@ include("tabular/compile.jl")
 include("tabular/validation.jl")
 
 # ------------------------------------------------------------------------------
-# Runtime
+# Runtime helpers
 # ------------------------------------------------------------------------------
 
 include("runtime/execution.jl")
-include("runtime/rollouts.jl")
 
 # ------------------------------------------------------------------------------
 # Solvers
@@ -93,16 +102,15 @@ include("solvers/prepare.jl")
 include("solvers/solve.jl")
 
 # ------------------------------------------------------------------------------
-# Top-level module exports
+# Top-level exports
 # ------------------------------------------------------------------------------
 
 export RuntimeRecords
 export Kernel
 export Enumerative
-export Families
 export Spaces
+export Spec
 
-export StrategyInternalUtils
 export StrategyInterface
 export LocalStrategies
 export JointStrategies
@@ -112,6 +120,13 @@ export StrategyProfiles
 
 export NormalForm
 export MatrixGames
+export ExtensiveFormInformationStates
+export ExtensiveFormInfosets
+export ExtensiveFormBehavior
+export BayesianPriors
+export SignalingGames
+export StackelbergGames
+export RepeatedGames
 
 export LearningInterfaces
 export LearningDiagnostics
@@ -138,23 +153,17 @@ export RuntimeStrategyExecution
 export RuntimeRollouts
 
 export SolverAPI
-export SolverPrepare
 export SolveDispatch
-
+export SolverPrepare
 export ApproxSolverCommon
 export RegretMatchingSolvers
 export ExtragradientSolvers
 export CFRSolvers
 export MCCFRSolvers
-
 export ExactExtensiveFormSolvers
 export ExactNormalFormSolvers
 export ExactMDPSolvers
 export ExactMarkovGameSolvers
-
-# ------------------------------------------------------------------------------
-# User-facing alias
-# ------------------------------------------------------------------------------
 
 export solve
 const solve = SolverAPI.solve

@@ -33,7 +33,6 @@ const FTPLFullInfoRecord = Union{
     RuntimeRecords.ContextFullInformationRecord,
 }
 
-Learning.learner_family(::FTPL) = :full_information
 LearningInterfaces.action_mode(::FTPL) = :discrete_index
 LearningInterfaces.requires_feedback_type(::FTPL) = FTPLFullInfoRecord
 LearningInterfaces.supports_action_space(::FTPL) = :finite_discrete

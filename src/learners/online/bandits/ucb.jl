@@ -34,7 +34,6 @@ const UCBBanditRecord = Union{
     RuntimeRecords.ContextBanditRecord,
 }
 
-Learning.learner_family(::UCB1) = :bandit
 LearningInterfaces.action_mode(::UCB1) = :discrete_index
 LearningInterfaces.requires_feedback_type(::UCB1) = UCBBanditRecord
 LearningInterfaces.supports_action_space(::UCB1) = :finite_discrete
