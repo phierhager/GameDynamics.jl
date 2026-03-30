@@ -5,6 +5,7 @@ module GameLab
 # ------------------------------------------------------------------------------
 
 include("common/records.jl")
+include("common/encodings.jl")
 
 include("games/kernel.jl")
 include("games/enumerative.jl")
@@ -40,6 +41,12 @@ include("games/bayesian/signaling.jl")
 
 include("games/repeated/repeated.jl")
 
+include("games/bertrand/homogenous.jl")
+include("games/bertrand/differentiated.jl")
+
+include("games/auctions/first_price.jl")
+include("games/auctions/second_price.jl")
+
 # ------------------------------------------------------------------------------
 # Learners
 # ------------------------------------------------------------------------------
@@ -55,12 +62,6 @@ include("learners/online/full_information/ftpl.jl")
 include("learners/online/full_information/hedge.jl")
 include("learners/online/full_information/ftrl.jl")
 
-# ------------------------------------------------------------------------------
-# Utilities
-# ------------------------------------------------------------------------------
-
-include("utils/encodings.jl")
-include("utils/evaluation.jl")
 
 # ------------------------------------------------------------------------------
 # Tabular models
@@ -101,6 +102,9 @@ include("solvers/exact/markov_games.jl")
 include("solvers/prepare.jl")
 include("solvers/solve.jl")
 
+
+include("analysis/evaluation.jl")
+
 # ------------------------------------------------------------------------------
 # Top-level exports
 # ------------------------------------------------------------------------------
@@ -127,6 +131,10 @@ export BayesianPriors
 export SignalingGames
 export StackelbergGames
 export RepeatedGames
+export HomogeneousBertrand
+export DifferentiatedBertrand
+export FirstPriceAuctions
+export SecondPriceAuctions
 
 export LearningInterfaces
 export LearningDiagnostics

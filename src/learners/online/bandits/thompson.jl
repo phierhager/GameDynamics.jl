@@ -39,7 +39,6 @@ const ThompsonBanditRecord = Union{
     RuntimeRecords.ContextBanditRecord,
 }
 
-Learning.learner_family(::GaussianThompson) = :bayesian_bandit
 LearningInterfaces.action_mode(::GaussianThompson) = :discrete_index
 LearningInterfaces.requires_feedback_type(::GaussianThompson) = ThompsonBanditRecord
 LearningInterfaces.supports_action_space(::GaussianThompson) = :finite_discrete
@@ -50,20 +49,19 @@ function LearningInterfaces.reset!(l::GaussianThompson, st::GaussianThompsonStat
     return st
 end
 
-function LearningInterfaces.policy!(dest::AbstractVector,
+function LearningInterfaces.strategy!(dest::AbstractVector,
                                     l::GaussianThompson,
                                     st::GaussianThompsonState,
-                                    ctx::LearningInterfaces.AbstractLearningContext)
+                                    record::Union{Nothing,RuntimeRecords.AbstractStepRecord} = nothing)
     throw(ArgumentError("GaussianThompson is a posterior-sampling policy; use `act!` directly."))
 end
 
 function LearningInterfaces.act!(l::GaussianThompson{T},
                                  st::GaussianThompsonState{T},
-                                 ctx::LearningInterfaces.AbstractLearningContext,
+                                 record::Union{Nothing,RuntimeRecords.AbstractStepRecord} = nothing,
                                  rng::AbstractRNG = Random.default_rng()) where {T}
     best_a = 1
     best_v = typemin(T)
-
     @inbounds for a in 1:l.n_actions
         σ = inv(sqrt(st.posterior_precision[a]))
         sample = st.posterior_mean[a] + σ * randn(rng)
@@ -72,7 +70,6 @@ function LearningInterfaces.act!(l::GaussianThompson{T},
             best_a = a
         end
     end
-
     return best_a
 end
 

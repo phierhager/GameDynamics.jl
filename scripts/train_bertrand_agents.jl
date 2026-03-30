@@ -9,13 +9,6 @@ using Printf
 using Statistics
 
 # ------------------------------------------------------------------------------
-# Minimal learning context used by the learners in your codebase
-# ------------------------------------------------------------------------------
-
-struct EmptyContext <: GameLab.LearningInterfaces.AbstractLearningContext end
-const EMPTY_CTX = EmptyContext()
-
-# ------------------------------------------------------------------------------
 # Agent wrapper
 # ------------------------------------------------------------------------------
 
@@ -23,12 +16,15 @@ mutable struct TrainableAgent
     name::String
     learner
     state
-    mode::Symbol           # :bandit or :full_information
+    mode::Symbol  # :bandit or :full_information
     action_counts::Vector{Int}
     reward_trace::Vector{Float64}
 end
 
 function TrainableAgent(name::String, learner, state, mode::Symbol, n_actions::Int)
+    mode in (:bandit, :full_information) ||
+        throw(ArgumentError("Unsupported agent mode: $mode"))
+
     return TrainableAgent(
         name,
         learner,
@@ -43,22 +39,25 @@ end
 # Helper utilities
 # ------------------------------------------------------------------------------
 
-function get_policy(agent::TrainableAgent, n_actions::Int)
+function get_policy(agent::TrainableAgent, n_actions::Int; rng::AbstractRNG = Random.default_rng())
     π = zeros(Float64, n_actions)
+
     try
-        GameLab.LearningInterfaces.policy!(π, agent.learner, agent.state, EMPTY_CTX)
+        GameLab.LearningInterfaces.policy!(π, agent.learner, agent.state, nothing)
         return π
-    catch
-        # index policies such as UCB / Thompson may not expose policy!
-        a = GameLab.LearningInterfaces.act!(agent.learner, agent.state, EMPTY_CTX, Random.default_rng())
-        π .= 0.0
-        π[a] = 1.0
-        return π
+    catch err
+        if err isa MethodError || err isa ArgumentError
+            a = GameLab.LearningInterfaces.act!(agent.learner, agent.state, nothing, rng)
+            π .= 0.0
+            π[a] = 1.0
+            return π
+        end
+        rethrow()
     end
 end
 
 function choose_action!(agent::TrainableAgent, rng::AbstractRNG)
-    a = GameLab.LearningInterfaces.act!(agent.learner, agent.state, EMPTY_CTX, rng)
+    a = GameLab.LearningInterfaces.act!(agent.learner, agent.state, nothing, rng)
     agent.action_counts[a] += 1
     return a
 end
@@ -74,11 +73,7 @@ end
 # Counterfactual utility vector for full-information learners
 # ------------------------------------------------------------------------------
 
-function full_information_feedback_homogeneous(
-    game,
-    joint_actions::NTuple{N,Int},
-    player::Int,
-) where {N}
+function full_information_feedback_homogeneous(game, joint_actions::NTuple{N,Int}, player::Int) where {N}
     n_actions = length(game.price_grid)
     utilities = zeros(Float64, n_actions)
 
@@ -104,10 +99,10 @@ function run_training!(
     log_every::Int = 1_000,
 )
     N = length(agents)
-    N == GameLab.Kernel.num_players(game) || throw(ArgumentError("Agent count must match number of players."))
+    N == GameLab.Kernel.num_players(game) ||
+        throw(ArgumentError("Agent count must match number of players."))
 
     n_actions = length(game.price_grid)
-
     mean_rewards = zeros(Float64, N)
     last_prices = zeros(Float64, N)
 
@@ -117,39 +112,38 @@ function run_training!(
         actions = ntuple(i -> choose_action!(agents[i], rng), N)
         ja = GameLab.Kernel.JointAction(actions)
 
-        s1, reward = GameLab.Kernel.step(game, s0, ja, rng)
+        _, reward = GameLab.Kernel.step(game, s0, ja, rng)
 
-        # record realized prices for logging
         @inbounds for i in 1:N
             last_prices[i] = game.price_grid[actions[i]]
             push!(agents[i].reward_trace, reward[i])
         end
 
-        # learner updates
         @inbounds for i in 1:N
-            if agents[i].mode == :bandit
-                rec = GameLab.RuntimeRecords.BanditRecord(actions[i], reward[i], true)
-                GameLab.LearningInterfaces.update!(agents[i].learner, agents[i].state, rec)
+            agent = agents[i]
 
-            elseif agents[i].mode == :full_information
+            if agent.mode == :bandit
+                rec = GameLab.RuntimeRecords.BanditRecord(actions[i], reward[i], true)
+                GameLab.LearningInterfaces.update!(agent.learner, agent.state, rec)
+
+            elseif agent.mode == :full_information
                 feedback = full_information_feedback_homogeneous(game, actions, i)
                 rec = GameLab.RuntimeRecords.FullInformationRecord(actions[i], feedback, true)
-                GameLab.LearningInterfaces.update!(agents[i].learner, agents[i].state, rec)
+                GameLab.LearningInterfaces.update!(agent.learner, agent.state, rec)
 
             else
-                error("Unknown agent mode $(agents[i].mode)")
+                error("Unknown agent mode $(agent.mode)")
             end
         end
 
-        # online running means
         @inbounds for i in 1:N
             mean_rewards[i] += (reward[i] - mean_rewards[i]) / t
         end
 
-        if t % log_every == 0 || t == 1 || t == rounds
+        if t == 1 || t % log_every == 0 || t == rounds
             println("round = $t")
             for i in 1:N
-                π = get_policy(agents[i], n_actions)
+                π = get_policy(agents[i], n_actions; rng = rng)
                 best_idx = argmax(π)
                 @printf(
                     "  player=%d  agent=%-14s  avg_reward=%8.4f  last_price=%8.3f  modal_price=%8.3f\n",
@@ -177,8 +171,10 @@ function summarize_agents(game, agents::Vector{TrainableAgent})
     println("=== final summary ===")
     for (i, agent) in enumerate(agents)
         avg_reward = isempty(agent.reward_trace) ? 0.0 : mean(agent.reward_trace)
+
         freq = zeros(Float64, n_actions)
         GameLab.AnalysisEvaluation.action_frequency_report!(freq, agent.action_counts)
+
         modal_action = argmax(freq)
         modal_price = game.price_grid[modal_action]
         π = get_policy(agent, n_actions)
@@ -187,8 +183,8 @@ function summarize_agents(game, agents::Vector{TrainableAgent})
         @printf("  average reward: %.6f\n", avg_reward)
         @printf("  modal action:   %d\n", modal_action)
         @printf("  modal price:    %.6f\n", modal_price)
-        println("  empirical frequencies = ", round.(freq; digits=4))
-        println("  current policy        = ", round.(π; digits=4))
+        println("  empirical frequencies = ", round.(freq; digits = 4))
+        println("  current policy        = ", round.(π; digits = 4))
         println()
     end
 end
@@ -198,15 +194,6 @@ end
 # ------------------------------------------------------------------------------
 
 function build_homogeneous_bertrand_game()
-    # Adjust constructor/field names here if your concrete type differs.
-    #
-    # Expected semantics from your pasted code:
-    # - price_grid::Vector{Float64}
-    # - marginal_costs::NTuple{N,Float64}
-    # - demand_curve::Function taking p::Float64
-    #
-    # Simple linear demand:
-    #   Q(p) = max(0, a - b p)
     a = 12.0
     b = 1.0
 
@@ -223,15 +210,6 @@ function build_homogeneous_bertrand_game()
 end
 
 function build_differentiated_bertrand_game()
-    # Included in case you also want the differentiated version.
-    #
-    # Expected semantics from your pasted code:
-    # - price_grid
-    # - attractiveness
-    # - price_sensitivity
-    # - outside_option_utility
-    # - marginal_costs
-    # - demand_curve(prices, shares)
     price_grid = collect(0.0:0.5:10.0)
     attractiveness = (4.0, 4.2)
     marginal_costs = (2.0, 2.0)
@@ -257,13 +235,23 @@ end
 function build_agents(n_actions::Int)
     agents = TrainableAgent[]
 
-    # Player 1: bandit learner
     exp3 = GameLab.EXP3Learners.EXP3(0.07, 0.07, n_actions)
-    push!(agents, TrainableAgent("EXP3", exp3, GameLab.EXP3Learners.EXP3State(exp3), :bandit, n_actions))
+    push!(agents, TrainableAgent(
+        "EXP3",
+        exp3,
+        GameLab.EXP3Learners.EXP3State(exp3),
+        :bandit,
+        n_actions,
+    ))
 
-    # Player 2: full-information learner
     hedge = GameLab.HedgeLearners.Hedge(0.08, n_actions)
-    push!(agents, TrainableAgent("Hedge", hedge, GameLab.HedgeLearners.HedgeState(hedge), :full_information, n_actions))
+    push!(agents, TrainableAgent(
+        "Hedge",
+        hedge,
+        GameLab.HedgeLearners.HedgeState(hedge),
+        :full_information,
+        n_actions,
+    ))
 
     return agents
 end
@@ -274,22 +262,27 @@ function build_many_agents_for_comparison(n_actions::Int)
             l = GameLab.EXP3Learners.EXP3(0.07, 0.07, n_actions)
             TrainableAgent("EXP3", l, GameLab.EXP3Learners.EXP3State(l), :bandit, n_actions)
         end,
+
         "UCB1" => () -> begin
             l = GameLab.UCBLearners.UCB1(2.0, n_actions)
             TrainableAgent("UCB1", l, GameLab.UCBLearners.UCB1State(l), :bandit, n_actions)
         end,
+
         "Thompson" => () -> begin
             l = GameLab.ThompsonLearners.GaussianThompson(0.0, 1.0, 1.0, n_actions)
             TrainableAgent("Thompson", l, GameLab.ThompsonLearners.GaussianThompsonState(l), :bandit, n_actions)
         end,
+
         "Hedge" => () -> begin
             l = GameLab.HedgeLearners.Hedge(0.08, n_actions)
             TrainableAgent("Hedge", l, GameLab.HedgeLearners.HedgeState(l), :full_information, n_actions)
         end,
+
         "FTPL" => () -> begin
             l = GameLab.FTPLLearners.FTPL(0.2, n_actions)
             TrainableAgent("FTPL", l, GameLab.FTPLLearners.FTPLState(l), :full_information, n_actions)
         end,
+
         "FTRL" => () -> begin
             l = GameLab.FTRLLearners.EntropicFTRL(0.08, n_actions)
             TrainableAgent("FTRL", l, GameLab.FTRLLearners.EntropicFTRLState(l), :full_information, n_actions)
@@ -301,11 +294,7 @@ end
 # Tournament runner
 # ------------------------------------------------------------------------------
 
-function round_robin_bertrand(
-    game;
-    rounds::Int = 10_000,
-    seed::Int = 42,
-)
+function round_robin_bertrand(game; rounds::Int = 10_000, seed::Int = 42)
     n_actions = length(game.price_grid)
     factories = build_many_agents_for_comparison(n_actions)
     names = collect(keys(factories))
@@ -318,7 +307,7 @@ function round_robin_bertrand(
         agent2 = factories[a2]()
         agents = [agent1, agent2]
 
-        run_training!(game, agents; rounds=rounds, rng=rng, log_every=rounds)
+        run_training!(game, agents; rounds = rounds, rng = rng, log_every = rounds)
 
         avg1 = mean(agent1.reward_trace)
         avg2 = mean(agent2.reward_trace)
@@ -346,11 +335,11 @@ function main()
 
     agents = build_agents(n_actions)
 
-    run_training!(game, agents; rounds=20_000, rng=rng, log_every=2_000)
+    run_training!(game, agents; rounds = 20_000, rng = rng, log_every = 2_000)
     summarize_agents(game, agents)
 
     println("=== round-robin comparison ===")
-    round_robin_bertrand(game; rounds=5_000, seed=11)
+    round_robin_bertrand(game; rounds = 5_000, seed = 11)
 
     return nothing
 end

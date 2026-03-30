@@ -6,6 +6,7 @@ abstract type AbstractGameFamily end
 
 struct GenericGameFamily <: AbstractGameFamily end
 struct NormalFormFamily <: AbstractGameFamily end
+struct SimultaneousOneShotFamily <: AbstractGameFamily end
 struct ExtensiveFormFamily <: AbstractGameFamily end
 struct MDPFamily <: AbstractGameFamily end
 struct MarkovGameFamily <: AbstractGameFamily end

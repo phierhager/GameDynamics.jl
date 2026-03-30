@@ -2,7 +2,7 @@ module TabularCompile
 
 using ..Kernel
 using ..NormalForm
-using ..ExtensiveForm
+using ..ExtensiveFormInfosets
 using ..Encodings
 
 using ..TabularMatrixGames
@@ -510,7 +510,7 @@ function compile_extensive_tree_typed(game::Kernel.AbstractGame,
 
         elseif nk == Kernel.DECISION
             p = Kernel.current_player(game, state)
-            info = convert(IT, ExtensiveForm.infoset(game, state, p))
+            info = convert(IT, ExtensiveFormInfosets.infoset(game, state, p))
 
             infoset_id = if Encodings.has_encoding(infoset_enc, info)
                 Encodings.encode(infoset_enc, info)
@@ -660,7 +660,7 @@ function compile_extensive_graph_typed(game::Kernel.AbstractGame,
 
         elseif nk == Kernel.DECISION
             p = Kernel.current_player(game, state)
-            info = convert(IT, ExtensiveForm.infoset(game, state, p))
+            info = convert(IT, ExtensiveFormInfosets.infoset(game, state, p))
 
             infoset_id = if Encodings.has_encoding(infoset_enc, info)
                 Encodings.encode(infoset_enc, info)

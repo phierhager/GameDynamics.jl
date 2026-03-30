@@ -43,10 +43,10 @@ function LearningInterfaces.reset!(l::EntropicFTRL, st::EntropicFTRLState)
     return st
 end
 
-function LearningInterfaces.policy!(dest::AbstractVector,
+function LearningInterfaces.strategy!(dest::AbstractVector,
                                     l::EntropicFTRL{T},
                                     st::EntropicFTRLState{T},
-                                    ctx::LearningInterfaces.AbstractLearningContext) where {T}
+                                    record::Union{Nothing,RuntimeRecords.AbstractStepRecord} = nothing) where {T}
     length(dest) == l.n_actions || throw(ArgumentError("Destination length mismatch."))
     maxu = maximum(st.cumulative_utilities)
     z = zero(T)
@@ -64,9 +64,9 @@ end
 
 function LearningInterfaces.act!(l::EntropicFTRL,
                                  st::EntropicFTRLState,
-                                 ctx::LearningInterfaces.AbstractLearningContext,
+                                 record::Union{Nothing,RuntimeRecords.AbstractStepRecord} = nothing,
                                  rng::AbstractRNG = Random.default_rng())
-    LearningInterfaces.policy!(st.probs, l, st, ctx)
+    LearningInterfaces.strategy!(st.probs, l, st, record)
     r = rand(rng)
     c = 0.0
     @inbounds for i in eachindex(st.probs)

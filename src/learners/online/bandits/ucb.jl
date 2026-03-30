@@ -45,23 +45,20 @@ function LearningInterfaces.reset!(l::UCB1, st::UCB1State)
     return st
 end
 
-function LearningInterfaces.policy!(dest::AbstractVector,
+function LearningInterfaces.strategy!(dest::AbstractVector,
                                     l::UCB1,
                                     st::UCB1State,
-                                    ctx::LearningInterfaces.AbstractLearningContext)
+                                    record::Union{Nothing,RuntimeRecords.AbstractStepRecord} = nothing)
     throw(ArgumentError("UCB1 is an index policy; use `act!` directly."))
 end
 
 function LearningInterfaces.act!(l::UCB1{T},
                                  st::UCB1State{T},
-                                 ctx::LearningInterfaces.AbstractLearningContext,
+                                 record::Union{Nothing,RuntimeRecords.AbstractStepRecord} = nothing,
                                  rng::AbstractRNG = Random.default_rng()) where {T}
     st.round += 1
-
     @inbounds for a in 1:l.n_actions
-        if st.counts[a] == 0
-            return a
-        end
+        st.counts[a] == 0 && return a
     end
 
     best_a = 1
@@ -77,7 +74,6 @@ function LearningInterfaces.act!(l::UCB1{T},
             best_a = a
         end
     end
-
     return best_a
 end
 

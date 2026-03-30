@@ -45,16 +45,16 @@ end
 
 @inline _gumbel(rng::AbstractRNG) = -log(-log(rand(rng)))
 
-function LearningInterfaces.policy!(dest::AbstractVector,
+function LearningInterfaces.strategy!(dest::AbstractVector,
                                     l::FTPL,
                                     st::FTPLState,
-                                    ctx::LearningInterfaces.AbstractLearningContext)
+                                    record::Union{Nothing,RuntimeRecords.AbstractStepRecord} = nothing)
     throw(ArgumentError("FTPL has no stable closed-form policy; use `act!` directly."))
 end
 
 function LearningInterfaces.act!(l::FTPL{T},
                                  st::FTPLState{T},
-                                 ctx::LearningInterfaces.AbstractLearningContext,
+                                 record::Union{Nothing,RuntimeRecords.AbstractStepRecord} = nothing,
                                  rng::AbstractRNG = Random.default_rng()) where {T}
     best_i = 1
     best_v = typemin(T)

@@ -34,7 +34,6 @@ const EXP3BanditRecord = Union{
     RuntimeRecords.ContextBanditRecord,
 }
 
-Learning.learner_family(::EXP3) = :bandit
 LearningInterfaces.action_mode(::EXP3) = :discrete_index
 LearningInterfaces.requires_feedback_type(::EXP3) = EXP3BanditRecord
 LearningInterfaces.supports_action_space(::EXP3) = :finite_discrete
@@ -45,10 +44,10 @@ function LearningInterfaces.reset!(l::EXP3, st::EXP3State)
     return st
 end
 
-function LearningInterfaces.policy!(dest::AbstractVector,
+function LearningInterfaces.strategy!(dest::AbstractVector,
                                     l::EXP3{T},
                                     st::EXP3State{T},
-                                    ctx::LearningInterfaces.AbstractLearningContext) where {T}
+                                    record::Union{Nothing,RuntimeRecords.AbstractStepRecord} = nothing) where {T}
     length(dest) == l.n_actions || throw(ArgumentError("Destination length mismatch."))
     maxw = maximum(st.log_weights)
     z = zero(T)
@@ -67,16 +66,14 @@ end
 
 function LearningInterfaces.act!(l::EXP3,
                                  st::EXP3State,
-                                 ctx::LearningInterfaces.AbstractLearningContext,
+                                 record::Union{Nothing,RuntimeRecords.AbstractStepRecord} = nothing,
                                  rng::AbstractRNG = Random.default_rng())
-    LearningInterfaces.policy!(st.probs, l, st, ctx)
+    LearningInterfaces.strategy!(st.probs, l, st, record)
     r = rand(rng)
     c = 0.0
     @inbounds for i in eachindex(st.probs)
         c += st.probs[i]
-        if r <= c
-            return i
-        end
+        r <= c && return i
     end
     return last(eachindex(st.probs))
 end

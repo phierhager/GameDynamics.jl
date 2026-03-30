@@ -5,103 +5,100 @@ using ..RuntimeRecords
 
 export AbstractLearner
 export AbstractLearnerState
-export AbstractLearningContext
 export AbstractActionDistribution
+
 export action_mode
 export reset!
 export act!
 export update!
-export policy!
+export strategy!
 export requires_feedback_type
 export supports_action_space
 export learner_name
 
+export record_context
+export require_context
+export has_context
+
 abstract type AbstractLearner end
 abstract type AbstractLearnerState end
-abstract type AbstractLearningContext end
 abstract type AbstractActionDistribution end
 
-"""
-Learner action interface classification.
-
-Suggested meanings:
-- `:discrete_index`  => returns integer action ids
-- `:structured`      => returns typed action objects
-- `:distribution`    => writes a policy/distribution into a buffer or object
-- `:parametric`      => learner acts through continuous parameters / policy object
-"""
 action_mode(::AbstractLearner) = :discrete_index
-
-"""
-Optional human-readable learner name.
-"""
 learner_name(l::AbstractLearner) = nameof(typeof(l))
 
 """
-Reset mutable learner state in place.
+Extract optional context from a runtime record.
+
+Returns `nothing` for non-contextual records.
 """
+@inline has_context(rec) = hasproperty(rec, :context)
+
+@inline function record_context(rec::RuntimeRecords.AbstractStepRecord)
+    return hasproperty(rec, :context) ? getproperty(rec, :context) : nothing
+end
+
+@inline record_context(::Nothing) = nothing
+
+@inline function require_context(rec::RuntimeRecords.AbstractStepRecord)
+    hasproperty(rec, :context) || throw(ArgumentError(
+        "Learner requires a runtime record with a `context` field, got $(typeof(rec))."
+    ))
+    return getproperty(rec, :context)
+end
+
 function reset!(learner::AbstractLearner, state::AbstractLearnerState)
     throw(MethodError(reset!, (learner, state)))
 end
 
 """
-Sample or choose an action from the learner under context `ctx`.
+Choose/sample an action.
 
-Contract:
-- should be allocation-light
-- should return a valid action for the learner/environment pair
+`record` is the runtime input. For non-contextual learners it may be `nothing`.
+For contextual learners it should usually be a `Context*Record`.
 """
 function act!(learner::AbstractLearner,
               state::AbstractLearnerState,
-              ctx::AbstractLearningContext,
+              record::Union{Nothing,RuntimeRecords.AbstractStepRecord} = nothing,
               rng::AbstractRNG = Random.default_rng())
-    throw(MethodError(act!, (learner, state, ctx, rng)))
+    throw(MethodError(act!, (learner, state, record, rng)))
 end
 
 """
-Update learner state from a runtime record.
+Update learner state from a realized runtime record.
 """
 function update!(learner::AbstractLearner,
                  state::AbstractLearnerState,
-                 record::RuntimeRecords.AbstractStepRecord)
-    throw(MethodError(update!, (learner, state, record)))
+                 rec::RuntimeRecords.AbstractStepRecord)
+    throw(MethodError(update!, (learner, state, rec)))
+end
+
+function update_episode!(learner::AbstractLearner,
+                         state::AbstractLearnerState,
+                         traj::RuntimeRecords.AbstractTrajectory)
+    throw(MethodError(update_episode!, (learner, state, traj)))
 end
 
 """
-Write the learner's current policy / action distribution into `dest`.
+Write the learner's current action distribution into `dest`.
 
-This is preferred over returning newly allocated vectors in hot loops.
+`record` is optional runtime input; use it for contextual learners.
 """
-function policy!(dest,
+function strategy!(dest,
                  learner::AbstractLearner,
                  state::AbstractLearnerState,
-                 ctx::AbstractLearningContext)
-    throw(MethodError(policy!, (dest, learner, state, ctx)))
+                 record::Union{Nothing,RuntimeRecords.AbstractStepRecord} = nothing)
+    throw(MethodError(strategy!, (dest, learner, state, record)))
 end
 
-"""
-Declare the preferred runtime-record type for this learner family.
-"""
 requires_feedback_type(::AbstractLearner) = RuntimeRecords.AbstractStepRecord
-
-"""
-Optional capability hook describing which action-space category the learner expects.
-
-Examples:
-- `:finite_discrete`
-- `:continuous_box`
-- `:simplex`
-"""
 supports_action_space(::AbstractLearner) = :unknown
 
-"""
-Fallback allocation-friendly helper for policy extraction.
-
-Only intended for diagnostics / inspection. Hot paths should use `policy!`.
-"""
-function Base.copy(learner_state_pair::Tuple{AbstractLearner,AbstractLearnerState,AbstractLearningContext})
-    learner, state, ctx = learner_state_pair
-    throw(ArgumentError("No generic allocation policy helper is defined for $(typeof(learner)). Implement `policy!` for high-performance use."))
+function Base.copy(x::Tuple{AbstractLearner,AbstractLearnerState,Union{Nothing,RuntimeRecords.AbstractStepRecord}})
+    learner, state, record = x
+    throw(ArgumentError(
+        "No generic allocation policy helper is defined for $(typeof(learner)). Implement `strategy!`."
+    ))
 end
 
 end
